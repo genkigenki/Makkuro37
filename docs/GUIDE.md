@@ -52,26 +52,25 @@ The full map: [CONTROLS.md](CONTROLS.md).
 
 <img src="img/screen-fader.png" width="240" alt="A fader's value">
 
-1. Move **F1** (CUTOFF) slowly down. The sound gets darker. Its value shows big on the screen.
-2. Raise **F2** (RESO). The filter starts to sing.
-3. Raise **F3** (MOVE). The filter sweeps on its own.
-4. Raise **F4** (DRIVE). The filter growls.
-5. Push the **MOD** wheel up. The filter closes. Move the **PITCH** wheel: everything bends, then springs back.
-6. Press **FADER BANK**. You see the four faders: the bar is the value, the white line where the fader stands.
-7. Press **>** (or a top pad 1–6) for the next bank. The faders now move that bank.
+1. Raise **F1** (MIX) slowly. More of the left effect. Its value shows big on the screen.
+2. Move **F2-F4** (X Y Z). They shape the effect.
+3. Push the **MOD** wheel up. The filter closes. Move the **PITCH** wheel: everything bends, then springs back.
+4. Press **FADER BANK**. You see the four faders: the bar is the value, the white line where the fader stands.
+5. Press **>** (or a top pad 1–5) for the next bank. The faders now move that bank.
 
-<img src="img/screen-faders-1.png" width="240" alt="FADER BANK, bank FILTER">
+<img src="img/screen-faders-1.png" width="240" alt="FADER BANK, bank FX L">
 
 | Bank | F1 | F2 | F3 | F4 |
 |---|---|---|---|---|
-| FILTER | cutoff | resonance | filter movement | drive |
-| SPACE | effect blend | effect X | effect Y | tape |
-| VOICES | volume 1+2 | volume 3+8 | volume 4+5 | volume 6+7 |
-| TIMBRE | volt (1 2 6 7) | tone | noise FM (3 8) | shape (4 5) |
-| MOTION | detune | detune rate | mod amount | analog |
-| SWELL | attack | release | glide | vibrato |
+| FX L | mix | X | Y | Z |
+| FX R | mix | X | Y | Z |
+| LFO | A rate | A shape | B rate | B shape |
+| PLAY | glide | vibrato | vibrato rate | arp rate |
+| OUTPUT | master | width | tape | analog |
 
-The banks are shortcuts: every fader parameter is also in a menu. A fader sets its parameter when you move it; switching banks changes nothing.
+Every setting has one place. The faders hold the amounts for all voices, the knobs on PRESETS the filter, the
+menus each voice's own settings and the choices (effect types, sources, scales). A fader sets its parameter when
+you move it; switching banks changes nothing.
 
 ## 4. Menus
 
@@ -144,7 +143,7 @@ The banks are shortcuts: every fader parameter is also in a menu. A fader sets i
 4. Hold a lit pad: the screen asks first. **Green** pad (bottom right) = replace, **red** = cancel.
 5. Tap a lit pad to load your sound.
 6. Hold **PATCH** for SETUP: pad light, USB console, output LINE or SPEAKER. Master volume, width, tape and
-   analog drift are in **GLOBE** MIX, page OUTPUT.
+   analog drift are on the faders, bank OUTPUT.
 
 ---
 
@@ -156,8 +155,8 @@ The banks are shortcuts: every fader parameter is also in a menu. A fader sets i
 | ![](img/screen-kb.png) KB | ![](img/screen-chaos.png) CHAOS | ![](img/screen-faders-1.png) FADER BANK |
 | ![](img/screen-menu-sound-1.png) SOUND: WAVE | ![](img/screen-menu-sound-2.png) SOUND: V1 DRONE | ![](img/screen-menu-sound-4.png) SOUND: V3 NOISE |
 | ![](img/screen-menu-sound-5.png) SOUND: V4 VCO | ![](img/screen-menu-motion-1.png) MOTION: DETUNE | ![](img/screen-menu-mix-1.png) MIX: VOLUME |
-| ![](img/screen-menu-effects-1.png) EFFECTS: FX L | ![](img/screen-menu-effects-3.png) EFFECTS: FILTER | ![](img/screen-menu-tuning-1.png) TUNING |
-| ![](img/screen-menu-motion-8.png) MOTION: LFO | ![](img/screen-menu-keys-1.png) KEYS | ![](img/screen-menu-setup-1.png) SETUP |
+| ![](img/screen-menu-effects-1.png) EFFECTS: TYPES | ![](img/screen-faders-3.png) FADER BANK: LFO | ![](img/screen-menu-tuning-1.png) TUNING |
+| ![](img/screen-faders-5.png) FADER BANK: OUTPUT | ![](img/screen-menu-keys-1.png) KEYS | ![](img/screen-menu-setup-1.png) SETUP |
 | ![](img/screen-help-1.png) HELP: pads | ![](img/screen-help-3.png) HELP: menus | ![](img/screen-help-6.png) HELP: faders |
 
 ## Update mode

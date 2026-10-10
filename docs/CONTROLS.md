@@ -26,29 +26,24 @@ Generated from the firmware's menu table (tools/docs_img.sh). On every page knob
 |  |  | SUB DIV | SUB DIV | SUB DIV |  |  |  | SUB DIV | SUB DIV |  |
 |  |  | S&H AMT |  |  | S&H AMT |  |  |  |  | S&H AMT |
 |  |  | S&H CLK |  |  | S&H CLK |  |  |  |  | S&H CLK |
-|  |  | LFO | A RATE | A WAVE | B RATE | B WAVE |  |  |  |  |
 | SCALE | TUNING | TUNING | TUNING | ROOT | SNAP (pads) | FINE |  |  |  |  |
-| FX | EFFECTS | FX L | FX L | L X | L Y | L Z | BLEND L |  |  |  |
-|  |  | FX R | FX R | R X | R Y | R Z | BLEND R |  |  |  |
-|  |  | FILTER | MODE | CUTOFF | RESO | DRIVE | MOVE | M RATE | CV SRC | CV AMT |
+| FX | EFFECTS | TYPES | FX L | FX R |  |  |  |  | CV SRC | CV AMT |
 | SEQ | SEQUENCER | STEPS | STEP 1 (pad: on) | STEP 2 (pad: on) | STEP 3 (pad: on) | STEP 4 (pad: on) | STEP 5 (pad: on) | STAGES | PULSER | RUN (pads) |
 |  |  | LOOP | LOOP (pads) |  |  |  |  |  |  |  |
-| ARP | KEYS | KEYS | KEYS | ARP | RATE | OCTAVES | LATCH (pads) | GLIDE | VIBRATO | VIB RATE |
+| ARP | KEYS | KEYS | KEYS | ARP | OCTAVES | LATCH (pads) |  |  |  |  |
 |  |  | STEP REC | STEP REC (pads) |  |  |  |  |  |  |  |
 | GLOBE | MIX | VOLUME | VOLUME | VOLUME | VOLUME | VOLUME | VOLUME | VOLUME | VOLUME | VOLUME |
 |  |  | PAN | PAN | PAN | PAN | PAN | PAN | PAN | PAN | PAN |
 |  |  | TONE | TONE | TONE | TONE | TONE | TONE | TONE | TONE | TONE |
-|  |  | OUTPUT | MASTER | WIDTH | TAPE | ANALOG |  |  |  |  |
 | PATCH+ | SETUP | SETUP | LIGHT | CONSOLE (pads) | OUTPUT (pads) |  |  |  |  |  |
 |  |  | JOYSTICK | X OFFS | Y OFFS |  |  |  |  |  |  |
 
-FADER BANK: the banks (< > or top pads 1-6). A fader sets its parameter when it moves.
+FADER BANK: the banks (< > or top pads 1-5). A fader sets its parameter when it moves.
 
 | Pad | Bank | F1 | F2 | F3 | F4 |
 |---|---|---|---|---|---|
-| 1 | FILTER | CUTOFF | RESO | MOVE | DRIVE |
-| 2 | SPACE | SPACE | FX X | FX Y | TAPE |
-| 3 | VOICES | 1+2 | 3+8 | 4+5 | 6+7 |
-| 4 | TIMBRE | VOLT | TONE | NZ FM | SHAPE |
-| 5 | MOTION | DETUNE | DT RATE | MOD AMT | ANALOG |
-| 6 | SWELL | ATTACK | RELEASE | GLIDE | VIBRATO |
+| 1 | FX L | MIX | X | Y | Z |
+| 2 | FX R | MIX | X | Y | Z |
+| 3 | LFO | A RATE | A SHAPE | B RATE | B SHAPE |
+| 4 | PLAY | GLIDE | VIBRATO | VIB RATE | ARP RATE |
+| 5 | OUTPUT | MASTER | WIDTH | TAPE | ANALOG |

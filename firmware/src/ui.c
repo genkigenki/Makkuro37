@@ -9,6 +9,9 @@
  *   page knob Ki sets column i; a value with two choices (or on / off) sits on the column's top / bottom pad.
  *   KNOB BANK: PRESETS (held: HELP; there K1-K8 are filters). PATCH: HOME (held: SETUP).
  *   FADER BANK: the faders' banks (< > or the top pads; the knobs stay the voices' pitch).
+ * Each parameter has one place: the menus hold each voice's own and the choices (types, sources, scales); the
+ * faders the amounts for all (effects, LFOs, playing, output); the knobs on PRESETS the filter; the wheels bend
+ * and close the filter.
  * One table (PAGES / MENUS below) drives the menus, the pads, HELP and the docs. */
 enum { MN_HOME, MN_SOUND, MN_ENV, MN_MOTION, MN_TUNING, MN_FX, MN_SEQ, MN_KEYS, MN_MIX, MN_SETUP, MN_PRESETS, MN_FADERS, MN_N };
 /* button ids (smk_input.h) */
@@ -52,34 +55,26 @@ static const page_t PAGES[] = {
     ROW("SUB DIV", CL_SUBDIV, NO, NO, "HOW DEEP THE SUB IS:\nTHE PITCH / 2 .. / 8"),
     ROW("S&H AMT", NO, NZ_SHAMT, NO, "NOISE VOICES: RANDOM STEPS\nIN PITCH, HOW FAR"),
     ROW("S&H CLK", NO, NZ_SHCLK, NO, "WHAT TIMES THE RANDOM STEPS"),
-    {"LFO", PG_GLOB, {G_LARATE, G_LAWAVE, G_LBRATE, G_LBWAVE, NO, NO, NO, NO}, NO, NO,
-     "TWO SLOW WAVES, A AND B:\nFOR MOD, GATE AND FILTER"},
     /* TUNING (SCALE) */
     {"TUNING", PG_GLOB, {G_TSET, G_ROOT, G_SNAP, G_FINE, NO, NO, NO, NO}, NO, NO,
      "THE SCALE KNOBS AND KEYS USE\nSNAP OFF: FREE PITCH"},
     /* EFFECTS (FX) */
-    {"FX L", PG_GLOB, {G_FXL, G_FXLX, G_FXLY, G_FXLZ, G_BLEND, NO, NO, NO}, NO, NO,
-     "LEFT EFFECT AND ITS X Y Z\nBLEND: HOW MUCH OF IT"},
-    {"FX R", PG_GLOB, {G_FXR, G_FXRX, G_FXRY, G_FXRZ, G_BLENDR, NO, NO, NO}, NO, NO,
-     "RIGHT EFFECT AND ITS X Y Z\nBLEND: HOW MUCH OF IT"},
-    {"FILTER", PG_GLOB, {G_FMODE, G_FFL, G_FRL, G_FDRIVE, G_FMD, G_FMR, G_FCVSRC, G_FCVAMT}, NO, NO,
-     "ONE FILTER ON ALL. MOVE: ITS\nLFO. CV: THE MOD WHEEL"},
+    {"TYPES", PG_GLOB, {G_FXL, G_FXR, NO, NO, NO, NO, G_FCVSRC, G_FCVAMT}, NO, NO,
+     "THE EFFECTS L R (FADERS: MIX\nX Y Z). CV: THE MOD WHEEL"},
     /* SEQUENCER (SEQ) */
     {"STEPS", PG_GLOB, {G_SEQ1, G_SEQ2, G_SEQ3, G_SEQ4, G_SEQ5, G_STAGES, G_PULSER, G_RUN}, NO, G_SGATES,
      "5 STEPS. TOP PAD: STEP ON\nPULSER: TEMPO  RUN: PADS"},
     {"LOOP", PG_GLOB, {X_LOOP, NO, NO, NO, NO, NO, NO, NO}, NO, NO,
      "RECORDS KNOBS AND PADS\nPAD 1 TOP: REC/LOOP  BOT: STOP"},
     /* KEYS (ARP) */
-    {"KEYS", PG_GLOB, {G_KEYS, G_ARP, G_ARATE, G_AOCT, G_ALATCH, G_GLIDE, G_VIBD, G_VIBR}, NO, NO,
-     "HOW THE KEYS PLAY 4 AND 5:\nARP, LATCH, GLIDE, VIBRATO"},
+    {"KEYS", PG_GLOB, {G_KEYS, G_ARP, G_AOCT, G_ALATCH, NO, NO, NO, NO}, NO, NO,
+     "HOW THE KEYS PLAY 4 AND 5\n(FADERS: GLIDE, VIBRATO, RATE)"},
     {"STEP REC", PG_GLOB, {X_STEPREC, NO, NO, NO, NO, NO, NO, NO}, NO, NO,
      "PAD 1 TOP, THEN KEYS: STEPS\nFOR ARP SEQ. BOTTOM: STOP"},
     /* MIX (GLOBE) */
     ROW3("VOLUME", VP_VOL, "EACH VOICE'S LOUDNESS"),
     ROW3("PAN", VP_PAN, "EACH VOICE LEFT OR RIGHT"),
     ROW3("TONE", VP_TONE, "EACH VOICE DARK OR BRIGHT"),
-    {"OUTPUT", PG_GLOB, {G_MASTER, G_WIDTH, G_TAPE, G_DRIFT, NO, NO, NO, NO}, NO, NO,
-     "MASTER, STEREO WIDTH, TAPE\nWOBBLE, ANALOG DRIFT"},
     /* SETUP (PATCH held): the device, not the sound */
     {"SETUP", PG_GLOB, {X_LIGHT, X_CONSOLE, X_OUTPUT, NO, NO, NO, NO, NO}, NO, NO,
      "PAD LIGHT, USB CONSOLE,\nOUTPUT: LINE OR SPEAKER"},
@@ -94,32 +89,24 @@ typedef struct { const char *name, *button; uint8_t btn, first, n; } menu_t;
 static const menu_t MENUS[MN_N] = {
     [MN_SOUND] = {"SOUND", "PARA", B_PARA, 0, 9},
     [MN_ENV] = {"ENVELOPE", "CHORD", B_CHORD, 9, 6},
-    [MN_MOTION] = {"MOTION", "REPEAT", B_REPEAT, 15, 8},
-    [MN_TUNING] = {"TUNING", "SCALE", B_SCALE, 23, 1},
-    [MN_FX] = {"EFFECTS", "FX", B_FX, 24, 3},
-    [MN_SEQ] = {"SEQUENCER", "SEQ", B_SEQ, 27, 2},
-    [MN_KEYS] = {"KEYS", "ARP", B_ARP, 29, 2},
-    [MN_MIX] = {"MIX", "GLOBE", B_GLOBE, 31, 4},
-    [MN_SETUP] = {"SETUP", "PATCH+", B_PATCH, 35, 2},
+    [MN_MOTION] = {"MOTION", "REPEAT", B_REPEAT, 15, 7},
+    [MN_TUNING] = {"TUNING", "SCALE", B_SCALE, 22, 1},
+    [MN_FX] = {"EFFECTS", "FX", B_FX, 23, 1},
+    [MN_SEQ] = {"SEQUENCER", "SEQ", B_SEQ, 24, 2},
+    [MN_KEYS] = {"KEYS", "ARP", B_ARP, 26, 2},
+    [MN_MIX] = {"MIX", "GLOBE", B_GLOBE, 28, 3},
+    [MN_SETUP] = {"SETUP", "PATCH+", B_PATCH, 31, 2},
 };
-_Static_assert(sizeof PAGES / sizeof PAGES[0] == 37u, "MENUS: the pages");
-/* the fader banks (FADER BANK, < > or the top pads): shortcuts, four menu parameters each; a global (a pair: L
- * and R) or one voice parameter on a group of voices */
-typedef struct { const char *name; uint8_t g, id, b; } fdest_t;   /* g: globals id and b (NO: none); else id on mask b */
+_Static_assert(sizeof PAGES / sizeof PAGES[0] == 33u, "MENUS: the pages");
+/* the fader banks (FADER BANK, < > or the top pads): the amounts for all voices, four each, in no menu */
+typedef struct { const char *name; uint8_t id; } fdest_t;   /* a global */
 typedef struct { const char *name; fdest_t f[4]; } fbank_t;
-#define FG(n, a, b) {n, 1, a, b}
-#define FV(n, k, m) {n, 0, k, m}
 static const fbank_t FBANK[] = {
-    {"FILTER", {FG("CUTOFF", G_FFL, NO), FG("RESO", G_FRL, NO), FG("MOVE", G_FMD, NO), FG("DRIVE", G_FDRIVE, NO)}},
-    {"SPACE", {FG("SPACE", G_BLEND, G_BLENDR), FG("FX X", G_FXLX, G_FXRX), FG("FX Y", G_FXLY, G_FXRY),
-               FG("TAPE", G_TAPE, NO)}},
-    {"VOICES", {FV("1+2", VP_VOL, 0x03), FV("3+8", VP_VOL, 0x84), FV("4+5", VP_VOL, 0x18), FV("6+7", VP_VOL, 0x60)}},
-    {"TIMBRE", {FV("VOLT", CL_VOLT, 0x63), FV("TONE", VP_TONE, 0xFF), FV("NZ FM", NZ_FMAMT, 0x84),
-                FV("SHAPE", VC_SHAPE, 0x18)}},
-    {"MOTION", {FV("DETUNE", VP_DMD, 0xFF), FV("DT RATE", VP_DMR, 0xFF), FV("MOD AMT", VP_MAMT, 0xFF),
-                FG("ANALOG", G_DRIFT, NO)}},
-    {"SWELL", {FV("ATTACK", VP_ATT, 0xFF), FV("RELEASE", VP_RLS, 0xFF), FG("GLIDE", G_GLIDE, NO),
-               FG("VIBRATO", G_VIBD, NO)}},
+    {"FX L", {{"MIX", G_BLEND}, {"X", G_FXLX}, {"Y", G_FXLY}, {"Z", G_FXLZ}}},
+    {"FX R", {{"MIX", G_BLENDR}, {"X", G_FXRX}, {"Y", G_FXRY}, {"Z", G_FXRZ}}},
+    {"LFO", {{"A RATE", G_LARATE}, {"A SHAPE", G_LAWAVE}, {"B RATE", G_LBRATE}, {"B SHAPE", G_LBWAVE}}},
+    {"PLAY", {{"GLIDE", G_GLIDE}, {"VIBRATO", G_VIBD}, {"VIB RATE", G_VIBR}, {"ARP RATE", G_ARATE}}},
+    {"OUTPUT", {{"MASTER", G_MASTER}, {"WIDTH", G_WIDTH}, {"TAPE", G_TAPE}, {"ANALOG", G_DRIFT}}},
 };
 #define NFBANK (sizeof FBANK / sizeof FBANK[0])
 
@@ -861,40 +848,14 @@ static void wheels_poll(void)
 /* The bank's four, absolute: a fader sets its parameter when it moves (a new bank: nothing jumps); at power-on and
  * after a preset the bank in use takes the faders as they stand. */
 static uint8_t fad_ready;
-static uint32_t fd_voice(const fdest_t *f)              /* (a group: its first voice) */
-{
-    uint32_t v = 0;
-    while (!((f->b >> v) & 1u))
-        v++;
-    return v;
-}
-static const pdesc_t *fd_desc(const fdest_t *f)
-{
-    return f->g ? &GDESC[f->id] : &VDESC[VTYPE[fd_voice(f)]][f->id];
-}
-static int32_t fd_get(const fdest_t *f)
-{
-    return f->g ? pt.g[f->id] : pt.v[fd_voice(f)][f->id];
-}
+static const pdesc_t *fd_desc(const fdest_t *f) { return &GDESC[f->id]; }
+static int32_t fd_get(const fdest_t *f) { return pt.g[f->id]; }
 static void fader_set(uint32_t i, uint32_t x)           /* x 0..127 over the parameter's range */
 {
     const fdest_t *f = &FBANK[ui.fbank].f[i];
-    const pdesc_t *d = fd_desc(f);
-    int32_t val = d->min + (int32_t)x * (d->max - d->min) / 127;
-    uint32_t v;
-    if (f->g) {
-        pt.g[f->id] = (int16_t)val;
-        mo_add(EV_G, 0, f->id, val);
-        if (f->b != NO) {
-            pt.g[f->b] = (int16_t)val;
-            mo_add(EV_G, 0, f->b, val);
-        }
-    } else
-        for (v = 0; v < NV; v++)
-            if ((f->b >> v) & 1u) {
-                pt.v[v][f->id] = (int16_t)val;
-                mo_add(EV_V, v, f->id, val);
-            }
+    int32_t val = fd_desc(f)->min + (int32_t)x * (fd_desc(f)->max - fd_desc(f)->min) / 127;
+    pt.g[f->id] = (int16_t)val;
+    mo_add(EV_G, 0, f->id, val);
 }
 static void faders_sync(void)                           /* all four, as they stand */
 {
