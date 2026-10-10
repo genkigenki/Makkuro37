@@ -17,6 +17,9 @@ maqam Rast, slendro, pelog) with root, 8 scenes with MORPH.
 
 ## Controls
 
+Player's guide: [docs/GUIDE.md](docs/GUIDE.md).
+
+
 | Control | Does |
 |---|---|
 | Pads 1–8 (top row) | gate voice 1–8: tap = hold on / off, hold = momentary; softer = slower swell |
@@ -31,7 +34,8 @@ maqam Rast, slendro, pelog) with root, 8 scenes with MORPH.
 | K5–K8 | the page's four values (blue, green, yellow, orange); the page's button again = next four |
 | ARP · NOTE REPEAT · CHORD · GLOBE | VOICE · MUTE/MOD · ENV · MIX pages |
 | BT · PARA | noise voices 3 / 8 · VCOs 4 / 5 |
-| SCALE · SEQ REC · SEQ · KNOB BANK · FX | TUNING · LFO · SEQ · FILTER · FX pages |
+| SCALE · SEQ REC · SEQ · FX | TUNING · LFO · SEQ · FX pages |
+| KNOB BANK | FILTER page; held: HELP (big maps of everything) |
 | SEQ PLAY | sequencer run / stop |
 | PATCH | SCENES (slot, load, save, MORPH, init); held: settings |
 | ARP held · CHORD held | CHAOS: re-roll the voice within the scale · HOLD ALL / ALL OFF |
