@@ -30,6 +30,7 @@ static void flt_tick(flt_t *f, int32_t freq, int32_t res, int32_t cv)
 {
     int32_t idx = clamp(freq * 1023 / 127 + cv, 0, 1023), g = (int32_t)SVF_G[idx];
     int32_t k = 131072 - clamp(res, 0, 127) * 1010, den;
+    res = clamp(res, 0, 127);
     f->on = freq < 127 || res > 0 || pt.g[G_FDRIVE] > 0 || cv < 0;
     if (pt.g[G_FMODE] == FM_DIST) {        /* DIST: drive, bias, a tone low-pass (cutoff) */
         f->on = 1;
@@ -38,7 +39,8 @@ static void flt_tick(flt_t *f, int32_t freq, int32_t res, int32_t cv)
         return;
     }
     if (pt.g[G_FMODE] == FM_LADDER) {      /* LADDER: 24 dB, saturating input */
-        lad_coef(&f->lad, idx, res);
+        lad_coef(&f->lad, idx + 113 > 1023 ? 1023 : idx + 113, res);   /* (it runs at half rate: the pole's
+                                                                         * cutoff curve an octave up) */
         f->drive = 4096 + pt.g[G_FDRIVE] * 96;
         return;
     }
@@ -58,10 +60,16 @@ static void flt_run(flt_t *f, int32_t *x, uint32_t n)
         f->ic1 = f->ic2 = 0;
         return;
     }
-    if (pt.g[G_FMODE] == FM_LADDER) {
-        for (i = 0; i < n; i++)
-            x[i] = lad_run(&f->lad, (x[i] * dr) >> 12, 0);
-        f->ic1 = f->ic2 = 0;
+    if (pt.g[G_FMODE] == FM_LADDER) {          /* at half rate: a pair in, one step, the pair out interpolated */
+        int32_t prev = f->ic2;
+        for (i = 0; i + 1u < n; i += 2u) {
+            int32_t y = lad_run(&f->lad, (((x[i] + x[i + 1u]) >> 1) * dr) >> 12, 0);
+            x[i] = (prev + y) >> 1;
+            x[i + 1u] = y;
+            prev = y;
+        }
+        f->ic2 = prev;
+        f->ic1 = 0;
         return;
     }
     if (pt.g[G_FMODE] == FM_DIST) {

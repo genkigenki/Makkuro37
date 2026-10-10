@@ -11,11 +11,11 @@ static const char *const MENU_NAME[MN_N] = {"", "VOICE", "ENV", "MOD", "MIX", "V
 /* button ids (smk_input.h) */
 enum { B_KNOBBANK, B_FADERBANK, B_LEFT, B_RIGHT, B_OCTDN, B_OCTUP, B_ARP, B_REPEAT, B_SCALE, B_CHORD, B_GLOBE,
        B_BT, B_PATCH, B_PARA, B_FX, B_SEQ, B_PLAY, B_REC };
-static const int8_t BTN_MENU[18] = {-1, MN_VOLUME, -1, -1, -1, -1, MN_KEYS, MN_MOD, MN_TUNING, MN_ENV, MN_MIX,
+static const int8_t BTN_MENU[18] = {-1, -1, -1, -1, -1, -1, MN_KEYS, MN_MOD, MN_TUNING, MN_ENV, MN_MIX,
                                     MN_LFO, MN_PRESETS, MN_VOICE, MN_FX, MN_SEQ, -1, -1};
 
-enum { IK_NONE, IK_V, IK_G, IK_SET, IK_LOAD, IK_SAVE, IK_MORPH, IK_STEPREC };
-typedef struct { uint8_t kind, id, voice; } item_t;
+enum { IK_NONE, IK_V, IK_G, IK_SET, IK_LOAD, IK_SAVE, IK_MORPH, IK_STEPREC, IK_MOTION };
+typedef struct { uint8_t kind, id, voice, alt; } item_t;   /* alt: a second parameter (the column's top pad) */
 enum { SET_BRIGHT, SET_CONSOLE, SET_SPEAKER, SET_N };
 enum { DLG_NONE, DLG_LOAD, DLG_SAVE, DLG_PRESET };
 enum { MO_IDLE, MO_REC, MO_LOOP, MO_STOP };
@@ -42,6 +42,11 @@ static struct {
     uint8_t chaos_held, chaos_used;
     uint8_t morph_on, morph_slot, morph[NSCENE];
     uint8_t focus;                         /* the voice touched last (VOICE opens on it) */
+    uint8_t altmask;                       /* columns showing their second parameter (DETUNE: RATE) */
+    uint8_t fbank;                         /* faders: 0 the filter, 1 the effects (FADER BANK) */
+    uint8_t free, hold;                    /* FREE-PLAY: the keys wake the drones (SEQ PLAY); HOLD (SEQ REC) */
+    int8_t fkey[NV];                       /* FREE-PLAY: the key each voice plays (-128: none) */
+    uint8_t forder[NV];                    /* (the order they woke in: the oldest goes first) */
     struct { uint8_t state; uint16_t n, i; uint32_t t0, len, last; } mo;   /* the motion loop */
 } ui;
 static struct { uint16_t t; uint8_t kind, a, c; int16_t b; } mo_ev[MO_N];   /* t in 10 ms */
@@ -49,6 +54,9 @@ enum { EV_GATE_ON = 1, EV_GATE_OFF, EV_V, EV_G };
 
 static void keys_poll(void);
 static void midi_poll(void);
+static void mo_toggle(void);
+static void free_play(uint32_t on);
+static void free_release_all(void);
 static void big_show(uint32_t col, const char *label, const char *val);
 
 static void ui_say(const char *a, const char *b)
@@ -76,7 +84,7 @@ static void mo_add(uint32_t kind, uint32_t a, uint32_t c, int32_t b)
 /* ------------------------------------------------------------- the menus --- */
 static void it_set(uint32_t k, uint32_t kind, uint32_t id, uint32_t voice)
 {
-    ui.it[k].kind = (uint8_t)kind, ui.it[k].id = (uint8_t)id, ui.it[k].voice = (uint8_t)voice;
+    ui.it[k].kind = (uint8_t)kind, ui.it[k].id = (uint8_t)id, ui.it[k].voice = (uint8_t)voice, ui.it[k].alt = 0xFF;
 }
 static void row_v(uint32_t id)                          /* one parameter of all 8 voices */
 {
@@ -100,16 +108,22 @@ static uint32_t menu_build(void)
     static const uint8_t FLT[8] = {G_FFL, G_FRL, G_FFR, G_FRR, G_FMODE, G_FLINK, G_FDRIVE, G_FCVAMT};
     static const uint8_t FXS[8] = {G_FXL, G_FXLX, G_FXLY, G_FXLZ, G_FXR, G_FXRX, G_FXRY, G_FXRZ};
     static const uint8_t FX3[8] = {G_BLEND, G_BLENDR, G_FCVSRC, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    static const uint8_t MIX[8] = {G_MASTER, G_DRIFT, G_WIDTH, G_BLEND, G_BLENDR, 0xFF, 0xFF, 0xFF};
+    static const uint8_t MIX[8] = {G_MASTER, G_DRIFT, G_WIDTH, G_BLEND, G_BLENDR, G_TAPE, G_FMR, G_FMD};
     static const uint8_t KEY[8] = {G_KEYS, G_ARP, G_ARATE, G_AOCT, G_ALATCH, G_GLIDE, G_VIBD, G_VIBR};
     uint32_t n = 1, k, p = ui.page, v;
     const char *name = MENU_NAME[ui.menu];
     for (k = 0; k < 8u; k++)
         it_set(k, IK_NONE, 0, 0);
     switch (ui.menu) {
-    case MN_VOICE:                                      /* a page a voice: its own eight */
-        n = NV;
-        v = p % NV;
+    case MN_VOICE:                                      /* page 0: the waves; then a page a voice: its own eight */
+        n = NV + 1u;
+        if (p == 0u) {
+            for (v = 0; v < NV; v++)
+                it_set(v, IK_V, VTYPE[v] == VT_VCO ? VC_WAVE : VP_WAVE, v);
+            name = "WAVE";
+            break;
+        }
+        v = (p - 1u) % NV;
         if (VTYPE[v] == VT_CLASSIC)
             for (k = 0; k < 8u; k++)
                 it_set(k, IK_V, CL_TUNE1 + k, v);
@@ -144,7 +158,17 @@ static uint32_t menu_build(void)
         break;
     }
     case MN_MOD:
-        n = 6;
+        n = 7;
+        if (p == 6u) {                                  /* DETUNE: depth; the column's top pad: its rate */
+            row_v(VP_DMD);
+            for (k = 0; k < 8u; k++) {
+                ui.it[k].alt = VP_DMR;
+                if ((ui.altmask >> k) & 1u)
+                    ui.it[k].id = VP_DMR;
+            }
+            name = "DETUNE";
+            break;
+        }
         if (p >= 4u) {                                  /* the subharmonics (classic), the sub-oscillators (VCO) */
             for (v = 0; v < NV; v++)
                 if (VTYPE[v] == VT_CLASSIC)
@@ -160,10 +184,10 @@ static uint32_t menu_build(void)
             it_set(2, IK_V, p == 2u ? NZ_SHAMT : NZ_SHCLK, 2), it_set(7, IK_V, p == 2u ? NZ_SHAMT : NZ_SHCLK, 7),
             name = p == 2u ? "S&H AMT" : "S&H CLK";
         break;
-    case MN_MIX:
-        n = 3;
-        if (p < 2u)
-            row_v(p ? VP_TONE : VP_PAN), name = p ? "TONE" : "PAN";
+    case MN_MIX:                                        /* VOLUME, PAN, TONE, the master */
+        n = 4;
+        if (p < 3u)
+            row_v(p == 0u ? VP_VOL : p == 1u ? VP_PAN : VP_TONE), name = p == 0u ? "VOLUME" : p == 1u ? "PAN" : "TONE";
         else
             row_g(MIX), name = "MASTER";
         break;
@@ -183,8 +207,11 @@ static uint32_t menu_build(void)
         name = "LFO A B";
         break;
     case MN_SEQ:
-        row_g(SEQ);
-        name = "STEPS";
+        n = 2;
+        if (p)
+            it_set(0, IK_MOTION, 0, 0), name = "MOTION";
+        else
+            row_g(SEQ), name = "STEPS";
         break;
     case MN_FX:
         n = 3;
@@ -227,7 +254,7 @@ static const pdesc_t *it_desc(const item_t *it)
     case IK_V: return &VDESC[VTYPE[it->voice]][it->id];
     case IK_G: return &GDESC[it->id];
     case IK_SET: return &SET[it->id];
-    case IK_LOAD: case IK_SAVE: case IK_MORPH: case IK_STEPREC: return &SLOT;
+    case IK_LOAD: case IK_SAVE: case IK_MORPH: case IK_STEPREC: case IK_MOTION: return &SLOT;
     default: return 0;
     }
 }
@@ -241,6 +268,7 @@ static int32_t it_get(const item_t *it)
     case IK_MORPH: return ui.morph[it->voice];
     case IK_LOAD: case IK_SAVE: return (scene_used >> it->voice) & 1u ? 127 : 0;
     case IK_STEPREC: return kb.seqlen * 8;
+    case IK_MOTION: return ui.mo.state * 40;
     default: return 0;
     }
 }
@@ -254,8 +282,8 @@ static void it_label(const item_t *it, char *b, uint32_t n)
         b[str_len(b)] = (char)('1' + it->voice);
         return;
     }
-    if (it->kind == IK_STEPREC) {
-        str_cpy(b, "STEP REC", n);
+    if (it->kind == IK_STEPREC || it->kind == IK_MOTION) {
+        str_cpy(b, it->kind == IK_STEPREC ? "STEP REC" : "MOTION", n);
         return;
     }
     str_cpy(b, d ? d->label : "", n);
@@ -281,6 +309,11 @@ static void it_text(const item_t *it, char *b, uint32_t n)
     int32_t v = it_get(it);
     if (it->kind == IK_LOAD || it->kind == IK_SAVE) {
         str_cpy(b, v ? "USED" : "FREE", n);
+        return;
+    }
+    if (it->kind == IK_MOTION) {
+        static const char *const ST[4] = {"-", "REC", "LOOP", "STOP"};
+        str_cpy(b, ST[ui.mo.state & 3u], n);
         return;
     }
     if (it->kind == IK_MORPH || it->kind == IK_STEPREC) {
@@ -439,6 +472,12 @@ static void it_turn(const item_t *it, uint32_t e, int32_t s)
         return;
     case IK_MORPH:
         morph_turn(it->voice, s);
+        return;
+    case IK_MOTION:                                     /* right: record / loop / stop / loop; left: stop */
+        if (s > 0)
+            mo_toggle();
+        else if (ui.mo.state == MO_LOOP || ui.mo.state == MO_REC)
+            ui.mo.state = MO_STOP;
         return;
     case IK_STEPREC:                                    /* right: record (anew), left: stop */
         if (s > 0) {
@@ -635,6 +674,13 @@ static void pads_poll(void)
                 dlg_answer(pad == 15u);
             continue;
         }
+        if (ui.menu != MN_HOME && pad < 8u && ui.it[pad].alt != 0xFF && ui.it[pad].kind != IK_NONE) {
+            if (vel) {                                  /* a pair: the top pad switches the knob (DETUNE: RATE) */
+                ui.altmask ^= (uint8_t)(1u << pad);
+                ui.dirty = 1;
+            }
+            continue;
+        }
         if (ui.menu != MN_HOME && !(ui.menu == MN_PRESETS && ui.page == 0u) && it_binary(&ui.it[pad & 7u])) {
             const item_t *it = &ui.it[pad & 7u];      /* on / off, two choices: the column's pads */
             const pdesc_t *d = it_desc(it);
@@ -664,9 +710,9 @@ static void pads_poll(void)
         if (ui.menu == MN_PRESETS && ui.page == 0u) {   /* the preset picker: pads 1..14, 15 cancel, 16 OK */
             if (!vel)
                 continue;
-            if (pad < NPRESET) {
-                ui.pre_sel = (uint8_t)pad;
-                preset_load(pad);                       /* (heard at once) */
+            if (pad < PRESET_PAGE && (ui.pre_sel / PRESET_PAGE) * PRESET_PAGE + pad < NPRESET) {
+                ui.pre_sel = (uint8_t)((ui.pre_sel / PRESET_PAGE) * PRESET_PAGE + pad);
+                preset_load(ui.pre_sel);                /* (heard at once) */
             } else if (pad == 15u || pad == 14u) {
                 ui.menu = MN_HOME;
                 ui.dirty = 1;
@@ -746,7 +792,9 @@ static void wheels_poll(void)
 /* ------------------------------------------------------------- faders: the effects and the filter --- */
 static void faders_poll(void)
 {
-    static const char *const NAME[4] = {"FX L", "FX R", "SPACE", "FILTER"};
+    static const char *const NAME[2][4] = {{"CUTOFF", "RESO", "FMOD RATE", "FMOD DEPTH"}, {"FX L", "FX R", "SPACE", "TAPE"}};
+    static const uint8_t G1[2][4] = {{G_FFL, G_FRL, G_FMR, G_FMD}, {G_BLEND, G_BLENDR, G_FXLX, G_TAPE}};
+    static const uint8_t G2[2][4] = {{G_FFR, G_FRR, 0xFF, 0xFF}, {0xFF, 0xFF, G_FXRX, 0xFF}};
     uint32_t i;
     if (fm1_in.frames < 200u)
         return;
@@ -758,17 +806,12 @@ static void faders_poll(void)
             continue;
         }
         ui.fad_last[i] = (uint8_t)v;
-        if (i == 0u)
-            pt.g[G_BLEND] = (int16_t)v;
-        else if (i == 1u)
-            pt.g[G_BLENDR] = (int16_t)v;
-        else if (i == 2u)
-            pt.g[G_FXLX] = pt.g[G_FXRX] = (int16_t)v;   /* the reverbs' decay, the delays' time */
-        else
-            pt.g[G_FFL] = pt.g[G_FFR] = (int16_t)v;     /* both filters (127: open) */
-        mo_add(EV_G, 0, i == 0u ? G_BLEND : i == 1u ? G_BLENDR : i == 2u ? G_FXLX : G_FFL, (int32_t)v);
+        pt.g[G1[ui.fbank][i]] = (int16_t)v;         /* A: cutoff, resonance (both filters), their LFO; */
+        if (G2[ui.fbank][i] != 0xFF)                 /* B: the effects' blend L / R, SPACE, TAPE */
+            pt.g[G2[ui.fbank][i]] = (int16_t)v;
+        mo_add(EV_G, 0, G1[ui.fbank][i], (int32_t)v);
         fmt_int(b, (int32_t)v);
-        big_show(8, NAME[i], b);
+        big_show(8, NAME[ui.fbank][i], b);
     }
 }
 
@@ -780,7 +823,7 @@ static void menu_go(uint32_t m)
     if (ui.menu == m && m != MN_HOME)                   /* its button again: back home */
         m = MN_HOME;
     ui.menu = (uint8_t)m;
-    ui.page = m == MN_VOICE ? ui.focus : 0;
+    ui.page = m == MN_VOICE ? ui.focus + 1u : 0;
     if (m == MN_PRESETS)
         ui.pre_sel = ui.preset;
     ui.dirty = 1;
@@ -851,13 +894,16 @@ static void buttons_poll(void)
             int32_t d = b == B_RIGHT ? 1 : -1;
             if (ui.menu == MN_HOME)                     /* home: the next preset (asks) */
                 dlg_open(DLG_PRESET, (ui.preset + NPRESET + (uint32_t)d) % NPRESET);
-            else if (ui.menu == MN_PRESETS && ui.page == 0u)
-                ui.pre_sel = (uint8_t)((ui.pre_sel + NPRESET + (uint32_t)d) % NPRESET), preset_load(ui.pre_sel);
+            else if (ui.menu == MN_PRESETS && ui.page == 0u) {   /* the themes: a page of 14 each */
+                uint32_t np = (NPRESET + PRESET_PAGE - 1u) / PRESET_PAGE, pg = (ui.pre_sel / PRESET_PAGE + np + (uint32_t)d) % np;
+                ui.pre_sel = (uint8_t)(pg * PRESET_PAGE);
+                preset_load(ui.pre_sel);
+            }
             else {
                 uint32_t n = menu_build();
                 ui.page = (uint8_t)((ui.page + n + (uint32_t)d) % n);
-                if (ui.menu == MN_VOICE)
-                    ui.focus = ui.page;
+                if (ui.menu == MN_VOICE && ui.page)
+                    ui.focus = (uint8_t)(ui.page - 1u);
             }
             ui.dirty = 1;
             break;
@@ -870,14 +916,20 @@ static void buttons_poll(void)
             if (ui.oct < 3) ui.oct++;
             ui_say(ui.oct ? "TRANSPOSE " : "TRANSPOSE 0", ui.oct < 0 ? "-" : ui.oct ? "+" : 0);
             break;
-        case B_PLAY:                                    /* the PULSER: sequencer and the keys' arpeggio */
-            pt.g[G_RUN] = (int16_t)!pt.g[G_RUN];
-            if (pt.g[G_RUN])
-                md.restart = 1;
-            ui_say(pt.g[G_RUN] ? "PULSER RUN" : "PULSER STOP", 0);
+        case B_FADERBANK:                               /* the faders: filter <-> effects */
+            ui.fbank ^= 1u;
+            ui.fad_last[0] = ui.fad_last[1] = ui.fad_last[2] = ui.fad_last[3] = 0xFF;
+            ui_say(ui.fbank ? "FADERS: FX" : "FADERS: FILTER", 0);
             break;
-        case B_REC:
-            break;                                      /* (on release: a tap; held: a new recording) */
+        case B_PLAY:                                    /* FREE-PLAY: the keys wake the drones */
+            free_play(!ui.free);
+            break;
+        case B_REC:                                     /* HOLD (FREE-PLAY): notes stay; a key again lets go */
+            ui.hold ^= 1u;
+            if (!ui.hold)
+                free_release_all();
+            ui_say(ui.hold ? "HOLD" : "HOLD OFF", 0);
+            break;
         case B_PATCH:
         case B_KNOBBANK:
             break;                                      /* (on release / hold) */
@@ -907,15 +959,6 @@ static void buttons_poll(void)
     if (ui.btn_t[B_PATCH] && (fm1_in.buttons >> B_PATCH) & 1u && fm1_ms - ui.btn_t[B_PATCH] >= 500u) {
         ui.btn_t[B_PATCH] = 0;
         menu_go(MN_SETUP);
-    }
-    if ((rel >> B_REC) & 1u && ui.btn_t[B_REC]) {
-        mo_toggle();
-        ui.btn_t[B_REC] = 0;
-    }
-    if (ui.btn_t[B_REC] && (fm1_in.buttons >> B_REC) & 1u && fm1_ms - ui.btn_t[B_REC] >= 700u) {
-        ui.btn_t[B_REC] = 0;
-        ui.mo.state = MO_IDLE;
-        mo_toggle();                                    /* held: a new recording */
     }
 }
 
@@ -972,9 +1015,13 @@ static void ui_leds(void)
         return;
     }
     if (ui.menu == MN_PRESETS && ui.page == 0u) {       /* the picker: 14 presets, red cancel, green OK */
-        for (v = 0; v < NPRESET; v++) {
+        uint32_t base = (ui.pre_sel / PRESET_PAGE) * PRESET_PAGE;
+        for (v = 0; v < 14u; v++) {
             const uint8_t *c = VCOL[v & 7u];
-            PAD(v, c[0], c[1], c[2], v == ui.pre_sel ? 256 : 30);
+            if (base + v < NPRESET)
+                PAD(v, c[0], c[1], c[2], base + v == ui.pre_sel ? 256 : 30);
+            else
+                padled_set(v, 0, 0, 0);
         }
         PAD(14, 255, 0, 0, 256);
         PAD(15, 0, 255, 0, 256);
@@ -1007,6 +1054,13 @@ static void ui_leds(void)
             const item_t *it = &ui.it[v];
             const pdesc_t *d;
             int on;
+            if (it->alt != 0xFF && it->kind != IK_NONE) {   /* a pair: white = the second (RATE) */
+                if ((ui.altmask >> v) & 1u)
+                    PAD(v, 255, 255, 255, 200);
+                else
+                    PAD(v, VCOL[v][0], VCOL[v][1], VCOL[v][2], 256);
+                continue;
+            }
             if (!it_binary(it))
                 continue;
             d = it_desc(it);
@@ -1021,8 +1075,9 @@ static void ui_leds(void)
         fm1_led_key(b, BTN_MENU[b] >= 0 && BTN_MENU[b] == (int8_t)ui.menu);
     fm1_led_key(B_KNOBBANK, ui.help);
     fm1_led_key(B_PATCH, ui.menu == MN_PRESETS || ui.menu == MN_SETUP);
-    fm1_led_key(B_PLAY, pt.g[G_RUN] != 0);
-    fm1_led_key(B_REC, ui.mo.state == MO_REC ? (fm1_ms >> 8) & 1u : ui.mo.state == MO_LOOP);
+    fm1_led_key(B_PLAY, ui.free);
+    fm1_led_key(B_REC, ui.hold);
+    fm1_led_key(B_FADERBANK, ui.fbank);
     fm1_led_key(B_OCTDN, ui.oct < 0);
     fm1_led_key(B_OCTUP, ui.oct > 0);
 #undef PAD
@@ -1033,6 +1088,8 @@ static void ui_init(void)
     uint32_t i;
     for (i = 0; i < 4u; i++)
         ui.fad_last[i] = 0xFF;
+    for (i = 0; i < NV; i++)
+        ui.fkey[i] = -128, ui.forder[i] = (uint8_t)i;
     ui.menu = MN_PRESETS;                               /* power-on: pick a preset */
     ui.page = 0;
     ui.pre_sel = ui.preset;
@@ -1051,7 +1108,78 @@ static void ui_input(void)
     mo_play();
     speaker = settings.speaker;
     for (v = 0; v < NV; v++)
-        gate_in[v] = VTYPE[v] == VT_VCO ? 0 : ui.pad_gate[v];
+        gate_in[v] = ui.pad_gate[v];
+    free_vco = ui.free;
+}
+
+/* ------------------------------------------------------------- FREE-PLAY --- */
+/* the keys wake the drones one after another, each tuned to its key; HOLD: they stay, the key again lets go */
+static int32_t voice_base(uint32_t v);
+static void free_on(uint32_t v, int32_t key, uint32_t vel)
+{
+    int32_t c = kb_cents(key), base;
+    ui.fkey[v] = (int8_t)key;
+    if (VTYPE[v] == VT_VCO) {
+        kb.cents[v - 3u] = c - OCT_CENTS[pt.v[v][VC_OCT] & 7] - pt.v[v][VC_TUNE];
+        pt.v[v][VP_PITCH] = 0;
+    } else {
+        int32_t d;
+        base = voice_base(v);                       /* (its root to the key's note, in its own register) */
+        d = c - base;
+        while (d > 1200)
+            d -= 1200;
+        while (d < -1200)
+            d += 1200;
+        pt.v[v][VP_PITCH] = vp_clamp(v, VP_PITCH, d);
+    }
+    gate_vel[v] = (uint8_t)vel;
+    ui.pad_gate[v] = ui.latched[v] = 1;
+}
+static void free_off(uint32_t v)
+{
+    ui.fkey[v] = -128;
+    ui.pad_gate[v] = ui.latched[v] = 0;
+}
+static void free_release_all(void)
+{
+    uint32_t v;
+    for (v = 0; v < NV; v++)
+        if (ui.fkey[v] != -128)
+            free_off(v);
+}
+static void free_play(uint32_t on)
+{
+    uint32_t v;
+    ui.free = (uint8_t)on;
+    for (v = 0; v < NV; v++)
+        ui.fkey[v] = -128;
+    if (on)
+        for (v = 0; v < NV; v++)
+            ui.pad_gate[v] = ui.latched[v] = 0;
+    ui_say(on ? "FREE PLAY" : "SEPARATE", 0);
+}
+static void free_key(int32_t key, uint32_t down, uint32_t vel)
+{
+    uint32_t v, best = 0, i;
+    for (v = 0; v < NV; v++)
+        if (ui.fkey[v] == key) {
+            if (down && ui.hold)                        /* HOLD: a held key again lets go */
+                free_off(v);
+            else if (!down && !ui.hold)
+                free_off(v);
+            return;
+        }
+    if (!down)
+        return;
+    for (v = 0; v < NV && ui.fkey[v] != -128; v++)      /* the first one asleep; else the oldest */
+        ;
+    if (v == NV)
+        v = ui.forder[0];
+    for (i = best = 0; i < NV; i++)                     /* (the order: v to the end) */
+        if (ui.forder[i] != v)
+            ui.forder[best++] = ui.forder[i];
+    ui.forder[NV - 1u] = (uint8_t)v;
+    free_on(v, key, vel);
 }
 
 /* ------------------------------------------------------------- keys --- */
@@ -1065,7 +1193,9 @@ static void keys_poll(void)
     for (k = 0; ch && k < 37u; k++)
         if ((ch >> k) & 1u) {
             int32_t key = (int32_t)k + 12 * ui.oct;
-            if ((now >> k) & 1u)
+            if (ui.free)
+                free_key(key, (now >> k) & 1u, fm1_in.key_vel[k]);
+            else if ((now >> k) & 1u)
                 kb_press(key, k >= 18u, fm1_in.key_vel[k]);
             else
                 kb_release(key);
@@ -1082,7 +1212,9 @@ static void midi_poll(void)
         RING_PUBLISH();
         mi_r++;
         cin = pkt & 15u, n = (pkt >> 16) & 127u, vel = (pkt >> 24) & 127u;
-        if (cin == 9u && vel)
+        if (ui.free && (cin == 8u || cin == 9u))
+            free_key((int32_t)n - 36, cin == 9u && vel, vel);
+        else if (cin == 9u && vel)
             kb_press((int32_t)n - 36, n >= 54u, vel);
         else if (cin == 8u || cin == 9u)
             kb_release((int32_t)n - 36);

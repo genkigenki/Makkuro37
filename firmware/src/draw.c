@@ -340,18 +340,21 @@ static void presets_screen(void)
     const felucca_font_t *f = text_w(&FONT_XL, nm) <= 236 ? &FONT_XL : &FONT_L;
     char b[8];
     cv_begin(240, 124, C_BG);
-    fmt_int(b, ui.pre_sel + 1);
-    text_c(120, 0, &FONT_L, b, rgbk(VCOL[ui.pre_sel & 7u], 256));
+    fmt_int(b, ui.pre_sel % PRESET_PAGE + 1);
+    cv_text(4, 0, &FONT_L, b, rgbk(VCOL[(ui.pre_sel % PRESET_PAGE) & 7u], 256));
+    cv_text(236 - text_w(&FONT_L, THEME_NAME[ui.pre_sel / PRESET_PAGE]), 0, &FONT_L, THEME_NAME[ui.pre_sel / PRESET_PAGE],
+            RGB(255, 220, 90));
     text_c(120, 40, f, nm, RGB(255, 255, 255));
-    text_c(120, 94, &FONT_L, "K1 / PADS", RGB(150, 140, 190));
+    text_c(120, 94, &FONT_L, "< THEME >", RGB(150, 140, 190));
     cv_blit(0, 32);
     cv_begin(240, 84, C_BG);
     for (k = 0; k < 16u; k++) {                          /* the pads as they are lit */
+        uint32_t base = (ui.pre_sel / PRESET_PAGE) * PRESET_PAGE;
         int32_t x = 4 + 29 * (int32_t)(k & 7u), y = k < 8u ? 2 : 30;
-        uint16_t c = k < NPRESET ? rgbk(VCOL[k & 7u], k == ui.pre_sel ? 256 : 60) : k == 14u ? RGB(255, 40, 40)
-                                                                                           : RGB(40, 230, 70);
+        uint16_t c = k < 14u ? (base + k < NPRESET ? rgbk(VCOL[k & 7u], base + k == ui.pre_sel ? 256 : 60) : RGB(20, 18, 28))
+                             : k == 14u ? RGB(255, 40, 40) : RGB(40, 230, 70);
         cv_rect(x, y, 25, 25, c);
-        if (k == ui.pre_sel)
+        if (base + k == ui.pre_sel)
             cv_rect(x + 8, y + 8, 9, 9, RGB(255, 255, 255));
     }
     text_c(60, 58, &FONT_L, "X", RGB(255, 60, 60));

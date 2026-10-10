@@ -18,7 +18,8 @@ static void synth_tick(void)
         int32_t att = clamp(p[VP_ATT] + (100 - (int32_t)vel) / 3, 0, 127);   /* soft pad: slower swell */
         if (VTYPE[v] == VT_VCO) {
             uint32_t i = v - 3u;
-            gate = gate_src((uint32_t)p[VP_GSRC], v) | kb.gate[i] | (kb.padhold[i] && kb.played);   /* (keys only) */
+            gate = gate_src((uint32_t)p[VP_GSRC], v) | kb.gate[i] | (kb.padhold[i] && kb.played) |
+                   (free_vco && gate_in[v]);           /* (keys only; in FREE-PLAY the key that woke it) */
             if (s->trig != kb.trig[i] && kb.gate[i])
                 s->gate = 0;                       /* a new key or arp step: attack again */
             s->trig = kb.trig[i];
@@ -142,13 +143,17 @@ static void synth_block(int32_t *out, uint32_t n)
     }
     {   /* the dual filter (R follows L with LINK, a hair apart), then the effector */
         int32_t src = pt.g[G_FCVSRC], cv = src ? (modv[src % MS_N] * pt.g[G_FCVAMT]) >> 12 : 0;
-        int32_t link = pt.g[G_FLINK];
-        flt_tick(&flt[0], pt.g[G_FFL], pt.g[G_FRL], cv);
-        flt_tick(&flt[1], link ? pt.g[G_FFL] : pt.g[G_FFR], link ? pt.g[G_FRL] : pt.g[G_FRR], cv + (link ? 6 : 0));
+        int32_t link = pt.g[G_FLINK], fd = pt.g[G_FMD] * pt.g[G_FMD] / 40, rw = (joy_y * 50) >> 15;
+        static uint32_t fph;
+        fph += LFO_A[pt.g[G_FMR] & 127] * 2u;   /* the filters' LFO: R a quarter on */
+        flt_tick(&flt[0], pt.g[G_FFL], pt.g[G_FRL] + rw, cv + ((SINE[fph >> 22] * fd) >> 15));
+        flt_tick(&flt[1], link ? pt.g[G_FFL] : pt.g[G_FFR], (link ? pt.g[G_FRL] : pt.g[G_FRR]) + rw,
+                 cv + (link ? 6 : 0) + ((SINE[(fph + 0x40000000u) >> 22] * fd) >> 15));   /* (the mod wheel: + res) */
         flt_run(&flt[0], bus_l, n);
         flt_run(&flt[1], bus_r, n);
         fx_run(bus_l, bus_r, n);
     }
+    tape_block(pt.g[G_TAPE]);
     for (i = 0; i < n; i++) {                       /* Melodee's master: DC, limiter, soft clip; the peak */
         int32_t l = bus_l[i], r = bus_r[i], a, b;
         master_out(&l, &r);

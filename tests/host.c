@@ -16,6 +16,7 @@
 #include "../firmware/src/keys.c"
 #include "../firmware/src/mix.c"
 #include "../firmware/src/params.c"
+#include "../firmware/src/presets.c"
 
 static int fails;
 static void wav(const char *path, const int16_t *s, uint32_t frames)
@@ -211,6 +212,24 @@ static void s_filter(uint32_t b)                   /* voice 1 through a resonant
     pt.g[G_FRL] = pt.g[G_FRR] = 120;
     pt.g[G_FDRIVE] = 90;
 }
+static uint32_t preset_n;
+static void s_preset(uint32_t b)                    /* a preset: its voices woken, a chord on the keys at 2..6 s */
+{
+    uint32_t v;
+    if (b == 0) {
+        preset_make(preset_n, &pt);
+        for (v = 0; v < NV; v++)
+            gate_in[v] = VTYPE[v] != VT_VCO && ((pt.g[G_AUTOGATE] >> v) & 1u);
+        if (getenv("NOFLT")) pt.g[G_FFL] = pt.g[G_FFR] = 127, pt.g[G_FRL] = pt.g[G_FRR] = pt.g[G_FMD] = pt.g[G_FDRIVE] = 0;
+        if (getenv("NOTAPE")) pt.g[G_TAPE] = 0;
+        if (getenv("NOFX")) pt.g[G_FXL] = pt.g[G_FXR] = 0;
+        if (getenv("NODTN")) for (v = 0; v < NV; v++) pt.v[v][VP_DMD] = 0;
+    }
+    if (b == SEC(2))
+        kb_press(12, 0, 100), kb_press(15, 1, 90), kb_press(19, 1, 90);
+    if (b == SEC(6))
+        kb_release(12), kb_release(15), kb_release(19);
+}
 
 int main(int argc, char **argv)
 {
@@ -252,6 +271,16 @@ int main(int argc, char **argv)
     render(dir, "vco_no_key_silent", 1, s_novco, -1);
     reset();
     render(dir, "nothing_silent", 1, s_nothing, -1);
+    for (preset_n = 0; preset_n < NPRESET; preset_n++) {
+        char name[48];
+        uint32_t i;
+        snprintf(name, sizeof name, "preset_%02u_%s", preset_n + 1, PRESET_NAME[preset_n]);
+        for (i = 0; name[i]; i++)
+            if (name[i] == ' ')
+                name[i] = '_';
+        reset();
+        render(dir, name, 9, s_preset, 1500);
+    }
     printf(fails ? "host: %d FAILED\n" : "host: all ok\n", fails);
     return fails != 0;
 }

@@ -67,13 +67,18 @@ static inline int32_t dc_block(int32_t x, int32_t *dc, int32_t *err)
 #define TP_N 1024u
 static int16_t tape_buf[2][TP_N];
 static struct { uint32_t w, wow, flt; } tp;
+static int32_t tape_d;                         /* the read delay (Q8 samples), once a block (tape_block) */
+static void tape_block(int32_t amt)
+{
+    tp.wow += 48700u * CTL;
+    tp.flt += 681000u * CTL;
+    tape_d = (300 << 8) + ((SINE[tp.wow >> 22] * amt) >> 10) + ((SINE[tp.flt >> 22] * amt) >> 13);
+}
 static inline void tape(int32_t *l, int32_t *r, int32_t amt)
 {
-    int32_t d, i, f, k;
+    int32_t d = tape_d, i, f, k;
     uint32_t w = ++tp.w;
-    tp.wow += 48700u;
-    tp.flt += 681000u;
-    d = (300 << 8) + ((SINE[tp.wow >> 22] * amt) >> 10) + ((SINE[tp.flt >> 22] * amt) >> 13);   /* Q8 samples */
+    (void)amt;
     i = d >> 8, f = d & 255;
     for (k = 0; k < 2; k++) {
         int32_t *x = k ? r : l, a, b;

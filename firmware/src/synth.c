@@ -5,6 +5,7 @@
 static patch_t pt;                         /* the sound (scene) */
 static vstate_t vs[NV];
 static volatile uint8_t gate_in[NV];       /* gates from the pads / keys (UI) */
+static volatile uint8_t free_vco;          /* FREE-PLAY: the VCOs too follow gate_in (else only their keys) */
 static volatile uint8_t gate_vel[NV] = {100, 100, 100, 100, 100, 100, 100, 100};   /* the pads' velocity */
 static int32_t modv[MS_N];                 /* modulation sources, Q15 */
 static volatile int32_t joy_x, joy_y;      /* wheels, Q15: X -32767..32767 (springs back), Y 0..32767 */
@@ -126,6 +127,32 @@ static int32_t drift(vstate_t *s, uint32_t g)
     return (s->mis[g] * amt / 256 + s->dr[g] * amt / 64);
 }
 
+static int32_t dtn_tick(vstate_t *s, const int16_t *p)   /* cents x 16 */
+{
+    int32_t d = p[VP_DMD];
+    s->dph += LFO_A[p[VP_DMR] & 127] * 4u;
+    s->dtn = d ? (SINE[s->dph >> 22] * (d * d * 800 / 16129)) >> 15 : 0;   /* up to +-50 cents */
+    return s->dtn;
+}
+
+/* the classic and noise voices' wave (WAVE): saw, square, triangle, sine */
+enum { CW_SAW, CW_SQUARE, CW_TRI, CW_SINE };
+static inline int32_t cwave(uint32_t w, uint32_t ph, uint32_t inc)
+{
+    int32_t t;
+    switch (w) {
+    case CW_SQUARE:
+        return (ph < 0x80000000u ? 26000 : -26000) + ((blep(ph, inc) - blep(ph + 0x80000000u, inc)) * 26000 >> 15);
+    case CW_TRI:
+        t = (int32_t)((ph + 0x40000000u) >> 15);
+        return t < 65536 ? t - 32768 : 98303 - t;
+    case CW_SINE:
+        return SINE[ph >> 22];
+    default:
+        return (int32_t)(ph >> 16) - 32768 - blep(ph, inc);
+    }
+}
+
 static int32_t mod_cents(const int16_t *p)      /* the voice's MOD source: up to +-1 octave */
 {
     int32_t a = p[VP_MAMT];
@@ -134,10 +161,11 @@ static int32_t mod_cents(const int16_t *p)      /* the voice's MOD source: up to
 
 static void classic_tick(vstate_t *s, const int16_t *p, int32_t fine)
 {
-    int32_t volt = p[CL_VOLT], trans = -volt * 2400 / 127, mc = mod_cents(p);
+    int32_t volt = p[CL_VOLT], trans = -volt * 2400 / 127, mc = mod_cents(p), dt = dtn_tick(s, p);
     uint32_t g;
     for (g = 0; g < 5u; g++) {
-        int32_t c = GEN_LO[g] * 100 + p[CL_TUNE1 + g] + p[VP_PITCH] + trans + fine + (drift(s, g) >> 4);
+        int32_t c = GEN_LO[g] * 100 + p[CL_TUNE1 + g] + p[VP_PITCH] + trans + fine +
+                    ((drift(s, g) + (g & 1u ? -dt : dt)) >> 4);   /* (detune: alternately up, down) */
         if ((p[CL_MOD] >> g) & 1)
             c += mc;
         s->inc[g] = (p[CL_MUTE] >> g) & 1 ? 0u : cents_inc(c);
@@ -168,15 +196,22 @@ static void classic_render(vstate_t *s, const int16_t *p, int32_t *o, int32_t *o
     }
     if (!fm) {                                 /* one generator at a time */
         int32_t k = VNORM[act];
+        uint32_t w = (uint32_t)p[VP_WAVE];
         for (g = 0; g < 5u; g++) {
             uint32_t ph = s->ph[g], inc = s->inc[g];
             int32_t *x = g & 1u ? o2 : o;
             if (!inc)
                 continue;
-            for (i = 0; i < n; i++) {
-                ph += inc;
-                x[i] += (saw(ph, inc) * k) >> 15;
-            }
+            if (w == CW_SAW)
+                for (i = 0; i < n; i++) {
+                    ph += inc;
+                    x[i] += (saw(ph, inc) * k) >> 15;
+                }
+            else
+                for (i = 0; i < n; i++) {
+                    ph += inc;
+                    x[i] += (cwave(w, ph, inc) * k) >> 15;
+                }
             s->ph[g] = ph;
             s->last[g] = 0;
         }
@@ -186,7 +221,7 @@ static void classic_render(vstate_t *s, const int16_t *p, int32_t *o, int32_t *o
         int32_t k = VNORM[act], l0 = s->last[0], l1 = s->last[1], l2 = s->last[2], l3 = s->last[3], l4 = s->last[4];
         for (i = 0; i < n; i++) {
             int32_t sa = 0, sb = 0;
-#define GEN(G, PREV, L, SUM)                                                                                if (s->inc[G]) {                                                                                    uint32_t inc = s->inc[G] + (uint32_t)((int32_t)(s->inc[G] >> 15) * ((PREV * fm) >> 15));                 s->ph[G] += inc;                                                                                L = saw(s->ph[G], inc);                                                                         SUM += L;                                                                                   }
+#define GEN(G, PREV, L, SUM)                                                                                if (s->inc[G]) {                                                                                    uint32_t inc = s->inc[G] + (uint32_t)((int32_t)(s->inc[G] >> 15) * ((PREV * fm) >> 15));                 s->ph[G] += inc;                                                                                L = cwave((uint32_t)p[VP_WAVE], s->ph[G], inc);                                                                         SUM += L;                                                                                   }
             GEN(0, l4, l0, sa)
             GEN(1, l0, l1, sb)
             GEN(2, l1, l2, sa)
@@ -216,7 +251,7 @@ static void noise_tick(vstate_t *s, const int16_t *p, int32_t fine)
         s->sh = (int32_t)xorshift(&s->nz) >> 16;   /* S&H on LFO A / B / the pulser */
     c = lo + p[NZ_PITCH] * (hi - lo) / 127 + p[VP_PITCH] + fine + mod_cents(p) + ((s->sh * (a * a * 2400 / 16129)) >> 15) +
         (drift(s, 0) >> 4);
-    s->inc[0] = cents_inc(c);
+    s->inc[0] = cents_inc(c + (dtn_tick(s, p) >> 4));
     if (s->inc[0] > 1u << 28)
         s->inc[0] = 1u << 28;
     s->minc = (MODR[p[NZ_RATE] & 127] * (p[NZ_MULT] ? 10u : 1u)) >> 5;   /* per sample */
@@ -235,6 +270,7 @@ static void noise_render(vstate_t *s, const int16_t *p, int32_t *o, uint32_t n)
     int32_t lag = s->lag, am = s->am, fmd = s->kv[NK_FMD], ka = s->kv[NK_LAG], step = s->kv[NK_STEP];
     int32_t tone = s->kv[NK_TONE], nl = s->kv[NK_NOISE];
     int fm = mode == NM_FM || mode == NM_FMAM, amm = mode == NM_AM || mode == NM_FMAM;
+    uint32_t wv = (uint32_t)p[VP_WAVE];
     for (i = 0; i < n; i++) {
         uint32_t inc = base, half;
         int32_t y, m;
@@ -251,7 +287,8 @@ static void noise_render(vstate_t *s, const int16_t *p, int32_t *o, uint32_t n)
             inc += (base >> 13) * (uint32_t)((lag * fmd) >> 15);
         }
         ph += inc;
-        y = (ph < 0x80000000u ? 32767 : -32767) + blep(ph, inc) - blep(ph + 0x80000000u, inc);
+        y = wv == CW_SQUARE ? (ph < 0x80000000u ? 32767 : -32767) + blep(ph, inc) - blep(ph + 0x80000000u, inc)
+                            : cwave(wv, ph, inc);
         y = (y * tone) >> 15;
         if (amm) {
             am += (((int32_t)(half ^ 1u) * 32767 - am) >> 5);
@@ -320,7 +357,7 @@ static void adsr(vstate_t *s, const int16_t *p, uint32_t gate)
 static void vco_tick(uint32_t v, vstate_t *s, const int16_t *p, int32_t fine, int32_t glide)
 {
     int32_t tgt = (kb.cents[v - 3u] + kb.vib + OCT_CENTS[p[VC_OCT] & 7] + p[VC_TUNE] + p[VP_PITCH] + fine + mod_cents(p) +
-                   ((joy_x * 200) >> 15)) * 16 + drift(s, 0), w;   /* the joystick bends +-2 semitones */
+                   ((joy_x * 200) >> 15)) * 16 + drift(s, 0) + dtn_tick(s, p), w;   /* the joystick bends +-2 st */
     if (!s->pitch || !glide)
         s->pitch = tgt;
     else
