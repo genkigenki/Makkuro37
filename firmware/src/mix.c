@@ -75,7 +75,7 @@ static void voice_tone(int32_t *x, int32_t *lp, int32_t k, uint32_t n)
     uint32_t i;
     int32_t a = lp[0], b = lp[1];
     for (i = 0; i < n; i++) {
-        int32_t y = (sat(x[i] + (x[i] >> 1)) * 21845) >> 15;      /* x 1.5 into tanh, back by 2/3 */
+        int32_t y = (sat_fast(x[i] + (x[i] >> 1)) * 21845) >> 15; /* x 1.5 into tanh, back by 2/3 */
         a += ((y - a) * k) >> 15;
         b += ((a - b) * k) >> 15;
         x[i] = b;

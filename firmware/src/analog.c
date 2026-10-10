@@ -13,6 +13,11 @@ static inline int32_t sat(int32_t x)
     return x < 0 ? -y : y;
 }
 static inline int32_t m12(int32_t a, int32_t b) { return (a * b) >> 12; }
+static inline int32_t sat_fast(int32_t x)              /* the same knee, nearest step (inside the loop) */
+{
+    int32_t a = x < 0 ? -x : x, i = (a + 16) >> 5, y = SAT_Q15[i > 2048 ? 2048 : i];
+    return x < 0 ? -y : y;
+}
 
 typedef struct {
     int32_t z[4];
@@ -27,10 +32,10 @@ static void lad_coef(lad_t *l, int32_t cutoff, int32_t res)
     l->g2 = m12(g, g);
     l->g3 = m12(l->g2, g);
     g4 = m12(l->g3, g);
-    l->k = clamp(res, 0, 127) * 18800 / 127;               /* ~4.6: self-oscillates near the top */
+    l->k = clamp(res, 0, 127) * 15800 / 127;               /* up to ~3.86: rings, sings, never screams */
     l->rcp = (int32_t)((8192u * 4096u) / (uint32_t)(4096 + m12(l->k, g4)));
     l->gain = 32767 - clamp(res, 0, 127) * 60;             /* (the resonance's bass loss, a little) */
-    l->mk = 4096 + (l->k * 3 >> 2);                        /* make-up: the pass band 1 / (1 + k) */
+    l->mk = 4096 + (l->k * 3 >> 2);                        /* make-up: most of the pass band's 1 / (1 + k) */
 }
 
 static inline int32_t lad_run(lad_t *l, int32_t x, int ssi)
@@ -38,8 +43,8 @@ static inline int32_t lad_run(lad_t *l, int32_t x, int ssi)
     int32_t g = l->g, u, d, y;
     int32_t sigma = m12(4096 - g, m12(l->g3, l->z[0]) + m12(l->g2, l->z[1]) + m12(g, l->z[2]) + l->z[3]);
     x = (x * l->gain) >> 15;
-    u = clamp(x - m12(l->k, sigma), -262143, 262143);
-    u = sat((u * l->rcp) >> 13);
+    u = x - sat_fast(m12(l->k, sigma));                    /* the feedback through a soft knee: bounded, smooth */
+    u = sat_fast(clamp((u * l->rcp) >> 13, -65536, 65536));
 #define LSTAGE(j, S) d = m12(g, u - l->z[j]); y = l->z[j] + d; l->z[j] = y + d; u = S(y)   /* (bounded: u is) */
 #define LIN(v) (v)
     if (ssi) {
@@ -49,7 +54,7 @@ static inline int32_t lad_run(lad_t *l, int32_t x, int ssi)
     }
 #undef LIN
 #undef LSTAGE
-    return sat((u * l->mk) >> 12);
+    return clamp((u * l->mk) >> 12, -65536, 65536);         /* (the master's limiter and knee follow) */
 }
 
 /* the master: DC blocker (~2 Hz; the step's remainder fed back, so no offset is left after silence), peak
@@ -86,7 +91,7 @@ static inline void tape(int32_t *l, int32_t *r, int32_t amt)
         a = tape_buf[k][(w - (uint32_t)i) & (TP_N - 1u)];
         b = tape_buf[k][(w - (uint32_t)i - 1u) & (TP_N - 1u)];
         a += ((b - a) * f) >> 8;
-        *x = sat(a + (a >> 3)) * 7 >> 3;
+        *x = sat_fast(a + (a >> 3)) * 7 >> 3;
     }
 }
 

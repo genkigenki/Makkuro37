@@ -212,6 +212,23 @@ static void s_filter(uint32_t b)                   /* voice 1 through a resonant
     pt.g[G_FRL] = pt.g[G_FRR] = 120;
     pt.g[G_FDRIVE] = 90;
 }
+static void s_res_fader(uint32_t b)                 /* a fader-swept resonant ladder, the fader's jitter included */
+{
+    static uint32_t r = 12345;
+    if (b == 0) {
+        preset_make(1, &pt);
+        gate_in[0] = gate_in[5] = 1;
+        pt.g[G_FMODE] = FM_LADDER;
+    }
+    if (b % 20 == 0) {                              /* (the UI's pace: ~15 ms) */
+        int32_t pos = (int32_t)(b % SEC(4)) * 2 * 127 / SEC(4);
+        pos = pos > 127 ? 254 - pos : pos;          /* down and up */
+        r = r * 1103515245u + 12345u;
+        pos += (int32_t)((r >> 16) % 3u) - 1;       /* +-1: an ADC */
+        pt.g[G_FFL] = pt.g[G_FFR] = (int16_t)clamp(30 + pos * 90 / 127, 0, 127);
+        pt.g[G_FRL] = pt.g[G_FRR] = (int16_t)(b < SEC(4) ? 110 : 127);
+    }
+}
 static uint32_t preset_n;
 static void s_preset(uint32_t b)                    /* a preset: its voices woken, a chord on the keys at 2..6 s */
 {
@@ -271,6 +288,8 @@ int main(int argc, char **argv)
     render(dir, "vco_no_key_silent", 1, s_novco, -1);
     reset();
     render(dir, "nothing_silent", 1, s_nothing, -1);
+    reset();
+    render(dir, "res_fader_sweep", 8, s_res_fader, 1500);
     for (preset_n = 0; preset_n < NPRESET; preset_n++) {
         char name[48];
         uint32_t i;

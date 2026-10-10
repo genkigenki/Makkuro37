@@ -11,6 +11,8 @@ typedef struct {
     int32_t out;                           /* output gain, Q15: resonance makes it louder */
     uint8_t on;
     lad_t lad;                             /* FILTER LADDER: Melodee's four-pole (analog.c) */
+    int32_t cs, rs;                        /* cutoff index, resonance: smoothed (x 256): no zipper from a fader */
+    uint8_t warm;
 } flt_t;
 static flt_t flt[2];
 
@@ -28,9 +30,17 @@ static inline int32_t clip_soft(int32_t x, int32_t knee)   /* linear to knee, th
 
 static void flt_tick(flt_t *f, int32_t freq, int32_t res, int32_t cv)
 {
-    int32_t idx = clamp(freq * 1023 / 127 + cv, 0, 1023), g = (int32_t)SVF_G[idx];
-    int32_t k = 131072 - clamp(res, 0, 127) * 1010, den;
+    int32_t idx = clamp(freq * 1023 / 127 + cv, 0, 1023), g, k, den;
     res = clamp(res, 0, 127);
+    if (!f->warm) {                        /* the cutoff and resonance glide to their targets (~6 ms) */
+        f->warm = 1;
+        f->cs = idx << 8, f->rs = res << 8;
+    }
+    f->cs += ((idx << 8) - f->cs) >> 3;
+    f->rs += ((res << 8) - f->rs) >> 3;
+    idx = (f->cs + 128) >> 8, res = (f->rs + 128) >> 8;
+    g = (int32_t)SVF_G[idx];
+    k = 131072 - res * 1010;
     f->on = freq < 127 || res > 0 || pt.g[G_FDRIVE] > 0 || cv < 0;
     if (pt.g[G_FMODE] == FM_DIST) {        /* DIST: drive, bias, a tone low-pass (cutoff) */
         f->on = 1;
@@ -39,8 +49,7 @@ static void flt_tick(flt_t *f, int32_t freq, int32_t res, int32_t cv)
         return;
     }
     if (pt.g[G_FMODE] == FM_LADDER) {      /* LADDER: 24 dB, saturating input */
-        lad_coef(&f->lad, idx + 113 > 1023 ? 1023 : idx + 113, res);   /* (it runs at half rate: the pole's
-                                                                         * cutoff curve an octave up) */
+        lad_coef(&f->lad, idx, res);
         f->drive = 4096 + pt.g[G_FDRIVE] * 96;
         return;
     }
@@ -60,16 +69,10 @@ static void flt_run(flt_t *f, int32_t *x, uint32_t n)
         f->ic1 = f->ic2 = 0;
         return;
     }
-    if (pt.g[G_FMODE] == FM_LADDER) {          /* at half rate: a pair in, one step, the pair out interpolated */
-        int32_t prev = f->ic2;
-        for (i = 0; i + 1u < n; i += 2u) {
-            int32_t y = lad_run(&f->lad, (((x[i] + x[i + 1u]) >> 1) * dr) >> 12, 0);
-            x[i] = (prev + y) >> 1;
-            x[i + 1u] = y;
-            prev = y;
-        }
-        f->ic2 = prev;
-        f->ic1 = 0;
+    if (pt.g[G_FMODE] == FM_LADDER) {          /* (at full rate: at half rate the ringing aliased) */
+        for (i = 0; i < n; i++)
+            x[i] = lad_run(&f->lad, (x[i] * dr) >> 12, 0);
+        f->ic1 = f->ic2 = 0;
         return;
     }
     if (pt.g[G_FMODE] == FM_DIST) {
