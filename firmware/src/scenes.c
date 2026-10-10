@@ -60,7 +60,7 @@ static int scene_save(uint32_t n)          /* 0..7; 0 = saved */
     return rc;
 }
 
-static int scene_load(uint32_t n)          /* 0 = loaded */
+static int scene_load_to(uint32_t n, patch_t *dst)   /* 0 = loaded */
 {
     static patch_t tmp;
     uint32_t v, k;
@@ -86,9 +86,10 @@ static int scene_load(uint32_t n)          /* 0 = loaded */
             tmp.g[k] = r[k];
     }
     patch_sanitize(&tmp);
-    pt = tmp;
+    *dst = tmp;
     return 0;
 }
+static int scene_load(uint32_t n) { return scene_load_to(n, &pt); }
 
 static void persist_boot(void)
 {

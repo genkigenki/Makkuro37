@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
+# Makkuro37: Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com>
 """Render the bitmap fonts to a C header (assets/fonts/):
   S  labels / units / status   Latin-1 32..255 at 1x
   L  large values / titles     32..95 (digits, signs, capitals), the same glyphs at 2x
@@ -21,7 +22,8 @@ FONTS = Path(__file__).resolve().parents[1] / "assets" / "fonts"
 # (name, file, px, scale, pixel, first, last): pixel fonts are rendered without
 # anti-aliasing at their design size and enlarged by an integer factor
 SIZES = [("S", "ter-u16n.bdf", 16, 1, True, 32, 255),   # Latin-1 (Hügelton needs the umlaut)
-         ("L", "ter-u16n.bdf", 16, 2, True, 32, 95)]   # values / titles: digits, signs, capitals
+         ("L", "ter-u16n.bdf", 16, 2, True, 32, 95),    # values / titles: digits, signs, capitals
+         ("XL", "ter-u16n.bdf", 16, 3, True, 32, 95)]   # Makkuro37: big values (the same bitmaps at 3x)
 PAD = 2
 
 
@@ -127,14 +129,14 @@ def main(out):
             # SLOOP 2.4: a pixel font at 2x is the 1x font's own bitmaps, enlarged while drawing (gfx.c
             # cv_text): no second copy in flash (24 KB). Same glyphs, same pixels: checked here.
             bname, bfirst, bh, bglyphs = base
-            assert scale == 2 and first == bfirst and h == bh * 2, "L must be S at 2x, same first glyph"
+            assert first == bfirst and h == bh * scale, "a large font is S enlarged, same first glyph"
             for (adv, bw, g), (badv, bbw, bg) in zip(glyphs, bglyphs):
-                assert adv == badv * 2 and bw == bbw * 2 and g == upscale(bg, bbw, bh, 2)
+                assert adv == badv * scale and bw == bbw * scale and g == upscale(bg, bbw, bh, scale)
             lines.append(f"static const uint8_t FONT_{name}_ADV[{len(glyphs)}] = {{" +
                          ", ".join(str(a) for a, _, _ in glyphs) + "};")
             lines.append(f"static const uint8_t FONT_{name}_BW[{len(glyphs)}] = {{" +
                          ", ".join(str(b) for _, b, _ in glyphs) + "};")
-            lines.append(f"static const felucca_font_t FONT_{name} = {{ {h}, {PAD * scale}, {first}, {last}, 1, "
+            lines.append(f"static const felucca_font_t FONT_{name} = {{ {h}, {PAD * scale}, {first}, {last}, {scale}, "
                          f"FONT_{name}_ADV, FONT_{name}_BW, FONT_{bname}_OFF, FONT_{bname}_DATA }};")
             lines.append("")
             print(f"font {name}: {ttf} {px}px h {h}, digit adv {glyphs[ord('0') - first][0]}, "
@@ -157,7 +159,7 @@ def main(out):
                      ", ".join(str(a) for a, _, _ in glyphs) + "};")
         lines.append(f"static const uint8_t FONT_{name}_BW[{len(glyphs)}] = {{" +
                      ", ".join(str(b) for _, b, _ in glyphs) + "};")
-        lines.append(f"static const felucca_font_t FONT_{name} = {{ {h}, {PAD * scale}, {first}, {last}, 0, "
+        lines.append(f"static const felucca_font_t FONT_{name} = {{ {h}, {PAD * scale}, {first}, {last}, 1, "
                      f"FONT_{name}_ADV, FONT_{name}_BW, FONT_{name}_OFF, FONT_{name}_DATA }};")
         lines.append("")
         if scale == 1:

@@ -44,6 +44,7 @@ typedef struct {                /* run-time state of a voice (audio side) */
     int32_t env;                /* Q24 */
     uint8_t stage;              /* 0 idle, 1 attack, 2 decay / sustain, 3 release */
     uint8_t gate;               /* last gate seen */
+    uint8_t hits;               /* gate triggers so far (the screen's hammers) */
     int32_t gl, gr;             /* gains now (Q15), ramped per sample */
     int32_t level;              /* output level for the screen and the pads, Q15 */
     /* noise voice */

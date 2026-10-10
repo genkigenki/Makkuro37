@@ -39,6 +39,32 @@ static void synth_tick(void)
 
 static int32_t bus_l[CTL], bus_r[CTL], vbuf[NV][CTL];
 
+/* the boot chime: a few sine plings (draw.c boot animation) */
+static struct { uint32_t ph, inc; int32_t env; } chime[4];
+static void chime_hit(int32_t cents)
+{
+    static uint32_t k;
+    chime[k & 3u].ph = 0;
+    chime[k & 3u].inc = cents_inc(cents);
+    chime[k & 3u].env = 30000;
+    k++;
+}
+static void chime_run(uint32_t n)
+{
+    uint32_t c, i;
+    for (c = 0; c < 4u; c++) {
+        int32_t e = chime[c].env;
+        if (!e)
+            continue;
+        for (i = 0; i < n; i++) {
+            int32_t y = (SINE[(chime[c].ph += chime[c].inc) >> 22] * e) >> 16;
+            bus_l[i] += y;
+            bus_r[i] += y;
+        }
+        chime[c].env = (e * 31700) >> 15;             /* ~0.5 s */
+    }
+}
+
 /* one control block: n = CTL frames into out (L, R interleaved, Q15) */
 static void synth_block(int32_t *out, uint32_t n)
 {
@@ -80,6 +106,7 @@ static void synth_block(int32_t *out, uint32_t n)
         s->gl = tl;
         s->gr = tr;
     }
+    chime_run(n);
     m = vol_q15(pt.g[G_MASTER]);
     for (i = 0; i < n; i++) {                       /* DC blocker (~7 Hz), master */
         int32_t xl = bus_l[i] << 8, xr = bus_r[i] << 8;

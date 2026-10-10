@@ -69,8 +69,10 @@ static inline int32_t soft(int32_t x)
 /* A / R (classic, noise); amplitude = env squared */
 static void env_ar(vstate_t *s, uint32_t gate, uint32_t att, uint32_t rls)
 {
-    if (gate && (!s->gate || s->stage == 0u || s->stage == 3u))
+    if (gate && (!s->gate || s->stage == 0u || s->stage == 3u)) {
         s->stage = 1;
+        s->hits += !s->gate;
+    }
     if (!gate && s->stage && s->stage != 3u)
         s->stage = 3;
     s->gate = (uint8_t)gate;
@@ -242,8 +244,10 @@ static void adsr(vstate_t *s, const int16_t *p, uint32_t gate)
 {
     int32_t top = 1 << 24, sus = p[VC_SUS] * 132104;          /* SUSTAIN 127 = full */
     uint32_t eg = (uint32_t)p[VC_EG];
-    if (gate && (!s->gate || s->stage == 0u || s->stage == 3u))
+    if (gate && (!s->gate || s->stage == 0u || s->stage == 3u)) {
         s->stage = 1;
+        s->hits += !s->gate;
+    }
     if (!gate && s->stage && s->stage != 3u)
         s->stage = 3;
     s->gate = (uint8_t)gate;

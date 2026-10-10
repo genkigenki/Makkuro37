@@ -114,8 +114,7 @@ static void mk_main(void)
     fm1_timer5_start(isr_timer5, 4);            /* above ALNK0 (3): the scan may nest into the render */
     fm1_guard_lock_top();
     fm1_irq_enable_all();
-    fm1_delay_ms(600);                          /* (the splash stays a moment) */
-    lcd_fill(0, 0, 240, 240, C_BG);
+    boot_anim();                                /* (draw.c: ~2 s, a key ends it) */
 
     healthy_since = fm1_ms;
     for (;;) {

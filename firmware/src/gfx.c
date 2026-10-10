@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
+ * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
+ * Makkuro37: Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
 /* Small-canvas renderer (no full framebuffer). Draw text/lines into
  * an off-screen strip, then blit it in one DMA transfer. Pixels are stored
  * byte-swapped (the panel takes RGB565 big-endian). */
@@ -7,7 +8,7 @@ typedef struct {               /* proportional, see tools/gen_font.py */
     uint8_t h;
     uint8_t pad;               /* bitmap starts this many pixels left of the pen */
     uint8_t first, last;
-    uint8_t sh;                /* 1: the bitmaps are another font's, drawn at 2x (L = S at 2x, no copy) */
+    uint8_t sh;                /* scale: > 1, another font's bitmaps drawn enlarged (L = S at 2x, XL at 3x) */
     const uint8_t *adv;        /* advance per glyph */
     const uint8_t *bw;         /* bitmap width per glyph (starts FONT_PAD left of the pen) */
     const uint16_t *off;       /* byte offset of each glyph */
@@ -143,11 +144,11 @@ static int32_t cv_text(int32_t x, int32_t y, const felucca_font_t *f, const char
         uint32_t gi = glyph(f, (uint8_t)*s), gx, gy, w, bpr;
         const uint8_t *gd;
         w = f->bw[gi];
-        bpr = ((w >> f->sh) + 1u) / 2u;
+        bpr = ((w / f->sh) + 1u) / 2u;
         gd = f->data + f->off[gi];
         for (gy = 0; gy < f->h; gy++)
             for (gx = 0; gx < w; gx++) {
-                uint32_t sx = gx >> f->sh, v = gd[(gy >> f->sh) * bpr + sx / 2u];
+                uint32_t sx = gx / f->sh, v = gd[(gy / f->sh) * bpr + sx / 2u];
                 v = (sx & 1u) ? (v & 15u) : (v >> 4);
                 if (v)
                     cv_pset(x - f->pad + (int32_t)gx, y + (int32_t)gy, ramp[v]);

@@ -64,6 +64,20 @@ static uint8_t scene_used = 5;
 static struct { uint8_t bright, console, boot_scene, scene; } settings = {4, 1, 0, 0};
 static int scene_save(uint32_t n) { (void)n; return 0; }
 static int scene_load(uint32_t n) { (void)n; return 0; }
+static int scene_load_to(uint32_t n, patch_t *d) { (void)n; patch_init(d); d->g[G_FFL] = 40; return 0; }
+static void fm1_wdt_feed(void) {}
+static const char *shot_dir;
+static uint32_t boot_shot_at[3] = {500, 950, 1900}, boot_shots;
+static void shot(const char *dir, const char *name);
+static void fm1_delay_ms(uint32_t ms)
+{
+    fm1_ms += ms;
+    if (boot_shots < 3 && fm1_ms >= boot_shot_at[boot_shots]) {
+        char n[32];
+        snprintf(n, sizeof n, "boot_%u", boot_shots++);
+        shot(shot_dir, n);
+    }
+}
 static void settings_save(void) {}
 #include "../firmware/src/ui.c"
 #include "../firmware/src/draw.c"
@@ -107,31 +121,51 @@ static void run(uint32_t ms)
     draw_frame();
 }
 
+static void page(const char *dir, const char *name, uint32_t pg, uint32_t sub, uint32_t voice)
+{
+    ui.page = (uint8_t)pg;
+    ui.sub = (uint8_t)sub;
+    ui.voice = (uint8_t)voice;
+    big.until = 0;
+    run(200);
+    shot(dir, name);
+}
+
 int main(int argc, char **argv)
 {
     const char *dir = argc > 1 ? argv[1] : ".";
+    shot_dir = dir;
     palette_set(2);
     patch_init(&pt);
     ui_init();
-    splash();
-    shot(dir, "screen_splash");
+    boot_anim();
     lcd_fill(0, 0, 240, 240, C_BG);
     ui.pad_gate[0] = ui.latched[0] = 1;
     ui.pad_gate[2] = ui.latched[2] = 1;
     ui.pad_gate[5] = 1;
-    run(1500);
-    shot(dir, "screen_voice");
-    ui.page = PG_MUTEMOD;
-    ui.sub = 1;
+    run(1200);
+    vs[5].hits++;                                   /* a bonk in progress on voice 6 */
+    ui.pad_gate[6] = 1;
+    run(110);
+    shot(dir, "screen_main");
+    pt.g[G_RUN] = 1;
+    page(dir, "page_voice_classic", PG_VOICE, 0, 0);
+    page(dir, "page_mutemod", PG_MUTEMOD, 1, 0);
+    page(dir, "page_voice_noise", PG_VOICE, 0, 2);
+    page(dir, "page_voice_vco", PG_VOICE, 0, 3);
+    page(dir, "page_env_vco", PG_ENV, 0, 3);
+    page(dir, "page_env", PG_ENV, 0, 0);
+    page(dir, "page_mix", PG_MIX, 0, 0);
+    page(dir, "page_tuning", PG_TUNING, 0, 0);
+    page(dir, "page_lfo", PG_LFO, 0, 0);
+    page(dir, "page_seq", PG_SEQ, 0, 0);
+    page(dir, "page_filter", PG_FILTER, 0, 0);
+    page(dir, "page_fx", PG_FX, 0, 0);
+    page(dir, "page_scenes", PG_SCENES, 0, 0);
+    ui.page = PG_VOICE, ui.sub = 0, ui.voice = 0;
+    page_build();
+    big_show(1, "TUNE 2", "G2+12");
     run(100);
-    shot(dir, "screen_mutemod");
-    ui.voice = 3;
-    ui.page = PG_VOICE;
-    ui.sub = 0;
-    run(100);
-    shot(dir, "screen_vco");
-    ui.page = PG_SCENES;
-    run(100);
-    shot(dir, "screen_scenes");
+    shot(dir, "overlay_value");
     return 0;
 }

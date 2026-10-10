@@ -14,7 +14,7 @@ static const int8_t BTN_PAGE[18] = {PG_FILTER, -1, -1, -1, -1, -1, PG_VOICE, PG_
 enum { IK_NONE, IK_V, IK_VBIT, IK_G, IK_GBIT, IK_SET, IK_ACT };
 typedef struct { uint8_t kind, id, bit; } item_t;
 #define MAXIT 16u
-enum { ACT_SLOT, ACT_LOAD, ACT_SAVE, ACT_INIT };
+enum { ACT_SLOT, ACT_LOAD, ACT_SAVE, ACT_MORPH, ACT_INIT };
 enum { SET_BRIGHT, SET_CONSOLE, SET_BOOT, SET_N };
 
 static struct {
@@ -38,10 +38,12 @@ static struct {
     uint32_t btn_t[FM1_NBTN];              /* page buttons: pressed at (ms | 1), 0 = up or used */
     uint32_t tap_t;                        /* PULSER pad: last tap */
     uint8_t fx_off;                        /* bit 0 / 1: effector L / R off (pads 15, 16) */
+    uint8_t morph, morph_on;               /* SCENES: MORPH 0..127 from the sound as it was to the slot */
 } ui;
 
 static void keys_poll(void);
 static void midi_poll(void);
+static void big_show(uint32_t k, const char *label, const char *val);
 
 static void ui_say(const char *a, const char *b)
 {
@@ -138,7 +140,7 @@ static void page_build(void)
         }
         break;
     case PG_SCENES:
-        for (k = 0; k < 4u; k++)
+        for (k = 0; k < 5u; k++)
             it_add(IK_ACT, (uint8_t)k, 0);
         break;
     }
@@ -170,14 +172,14 @@ static int32_t it_get(const item_t *it)
     case IK_GBIT: return (pt.g[it->id] >> it->bit) & 1;
     case IK_SET: return it->id == SET_BRIGHT ? settings.bright : it->id == SET_CONSOLE ? settings.console
                                                                                          : settings.boot_scene;
-    case IK_ACT: return it->id == ACT_SLOT ? ui.slot : 0;
+    case IK_ACT: return it->id == ACT_SLOT ? ui.slot : it->id == ACT_MORPH ? ui.morph : 0;
     default: return 0;
     }
 }
 
 static void it_label(const item_t *it, char *b, uint32_t n)
 {
-    static const char *const ACT[4] = {"SLOT", "LOAD", "SAVE", "INIT"};
+    static const char *const ACT[5] = {"SLOT", "LOAD", "SAVE", "MORPH", "INIT"};
     const pdesc_t *d = it_desc(it);
     if (it->kind == IK_VBIT) {
         uint32_t k;
@@ -207,8 +209,10 @@ static void it_text(const item_t *it, char *b, uint32_t n)
     if (it->kind == IK_ACT) {
         if (it->id == ACT_SLOT) {
             b[0] = (char)('1' + ui.slot);
-            str_cpy(b + 1, (scene_used >> ui.slot) & 1u ? " USED" : " FREE", n - 1u);
-        } else
+            str_cpy(b + 1, (scene_used >> ui.slot) & 1u ? "" : " FREE", n - 1u);
+        } else if (it->id == ACT_MORPH)
+            fmt_int(b, ui.morph);
+        else
             str_cpy(b, ui.arm == it->id + 1u ? "AGAIN" : ">", n);
         return;
     }
@@ -281,7 +285,7 @@ static int32_t accel(uint32_t e, int32_t s, int32_t span)
 
 static void scene_act(uint32_t a, int32_t s)
 {
-    static const char *const NAME[4] = {"", "LOAD ", "SAVE ", "INIT"};
+    static const char *const NAME[5] = {"", "LOAD ", "SAVE ", "", "INIT"};
     char d[2] = {(char)('1' + ui.slot), 0};
     if (s <= 0)
         return;
@@ -304,6 +308,37 @@ static void scene_act(uint32_t a, int32_t s)
     } else {
         patch_init(&pt);
         ui_say("INIT SOUND", 0);
+    }
+}
+
+/* MORPH: the sound as it was (A) into the slot's scene (B); numbers glide, switches flip half way */
+static patch_t morph_a, morph_b;
+static void morph_turn(int32_t s)
+{
+    uint32_t v, k, m;
+    if (!ui.morph_on) {
+        if (scene_load_to(ui.slot, &morph_b)) {
+            ui_say("EMPTY", 0);
+            return;
+        }
+        morph_a = pt;
+        ui.morph = 0;
+        ui.morph_on = 1;
+    }
+    ui.morph = (uint8_t)clamp(ui.morph + s * 3, 0, 127);
+    m = ui.morph;
+    for (v = 0; v < NV; v++)
+        for (k = 0; k < VP_N; k++) {
+            const pdesc_t *d = &VDESC[VTYPE[v]][k];
+            int32_t a = morph_a.v[v][k], b = morph_b.v[v][k];
+            pt.v[v][k] = (int16_t)(d->fmt == F_ENUM || d->fmt == F_ONOFF || d->fmt == F_BITS ? (m < 64u ? a : b)
+                                                                                             : a + (b - a) * (int32_t)m / 127);
+        }
+    for (k = 0; k < G_COUNT; k++) {
+        const pdesc_t *d = &GDESC[k];
+        int32_t a = morph_a.g[k], b = morph_b.g[k];
+        pt.g[k] = (int16_t)(d->fmt == F_ENUM || d->fmt == F_ONOFF || d->fmt == F_BITS ? (m < 64u ? a : b)
+                                                                                      : a + (b - a) * (int32_t)m / 127);
     }
 }
 
@@ -333,7 +368,10 @@ static void it_turn(const item_t *it, uint32_t e, int32_t s)
         if (it->id == ACT_SLOT) {
             ui.slot = (uint8_t)clamp(ui.slot + s, 0, NSCENE - 1);
             ui.arm = 0;
-        } else
+            ui.morph_on = 0;
+        } else if (it->id == ACT_MORPH)
+            morph_turn(s);
+        else
             scene_act(it->id, s);
         return;
     case IK_V:
@@ -631,7 +669,10 @@ static void knobs_poll(void)
     int32_t s;
     uint32_t k;
     if ((s = fm1_enc_take(0)) != 0) {                       /* K1 master */
+        char b[8];
         pt.g[G_MASTER] = (int16_t)clamp(pt.g[G_MASTER] + accel(0, s, 127) * 2, 0, 127);
+        fmt_int(b, pt.g[G_MASTER]);
+        big_show(9, "MASTER", b);
         ui.dirty = 1;
     }
     if ((s = fm1_enc_take(1)) != 0) {                       /* K2 pages (and their fours) */
@@ -662,7 +703,7 @@ static void knobs_poll(void)
         voice_sel(ui.voice + (uint32_t)(s > 0 ? s : NV * 8 + s));
     if ((s = fm1_enc_take(3)) != 0) {                       /* K4 tuning set */
         pt.g[G_TSET] = (int16_t)clamp(pt.g[G_TSET] + s, 0, TS_N - 1);
-        ui_say("TUNING ", TSETS[pt.g[G_TSET]].name);
+        big_show(9, "TUNING", TSETS[pt.g[G_TSET]].name);
     }
     page_build();
     for (k = 0; k < 4u; k++) {
@@ -670,7 +711,17 @@ static void knobs_poll(void)
         if ((s = fm1_enc_take(4u + k)) == 0)
             continue;
         if (i < ui.nit && ui.it[i].kind != IK_NONE)
+        {
+            char lb[16], vb[16];
             it_turn(&ui.it[i], 4u + k, s);
+            if (ui.it[i].kind != IK_ACT || ui.it[i].id == ACT_SLOT || ui.it[i].id == ACT_MORPH) {
+                it_label(&ui.it[i], lb, sizeof lb);
+                it_text(&ui.it[i], vb, sizeof vb);
+                big_show(k, lb, vb);
+            }
+            if (ui.it[i].kind != IK_ACT)
+                ui.morph_on = 0;                           /* an edit: the next MORPH starts from here */
+        }
     }
 }
 
