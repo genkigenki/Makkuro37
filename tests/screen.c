@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
 /* Host render of the screen (the firmware's ui.c / draw.c on a 240 x 240 frame buffer) to PPM files.
- *   tests/screen OUTDIR      (tests/run_tests.sh converts them to PNG) */
+ *   tests/screen OUTDIR        (tests/run_tests.sh converts them to PNG)
+ *   tests/screen OUTDIR docs   every screen, named for docs/img (tools/docs_img.sh) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -126,6 +127,71 @@ static void page(const char *dir, const char *name, uint32_t menu, uint32_t pg)
     shot(dir, name);
 }
 
+static void docs(const char *dir)                       /* every screen, for the guide */
+{
+    static const char *const MN[MN_N] = {"home", "voice", "env", "mod", "mix", "volume", "tuning", "lfo", "seq",
+                                         "fx", "keys", "presets", "setup"};
+    uint32_t m, pg, t;
+    char n[48];
+    fm1_in.fader[0] = 112, fm1_in.fader[1] = 16, fm1_in.fader[2] = 40, fm1_in.fader[3] = 0;
+    boot_frame(2000);
+    shot(dir, "boot");
+    lcd_fill(0, 0, 240, 240, C_BG);
+    for (t = 0; t < NTHEME; t++) {                     /* the picker, each theme */
+        ui.menu = MN_PRESETS, ui.page = 0;
+        ui.pre_sel = (uint8_t)(t * PRESET_PAGE + 4u);
+        ui.preset = ui.pre_sel;
+        run(200);
+        snprintf(n, sizeof n, "presets-%u", t + 1);
+        shot(dir, n);
+    }
+    preset_load(1);
+    ui.menu = MN_HOME;
+    run(2500);
+    shot(dir, "home");
+    pitch_turn(2, 3);
+    run(100);
+    shot(dir, "home-pitch");
+    big.until = 0, ui.msg_until = 0;
+    fm1_in.fader[1] += 20;                             /* a fader moves: its value, big */
+    run(100);
+    shot(dir, "fader");
+    big.until = 0, ui.msg_until = 0;
+    free_play(1);                                      /* FREE-PLAY: keys wake the drones */
+    run(400);
+    shot(dir, "free-play");
+    free_play(0);
+    big.until = 0, ui.msg_until = 0;
+    chaos(0, 8);                                       /* CHAOS: all re-rolled */
+    run(100);
+    shot(dir, "chaos");
+    for (m = MN_VOICE; m < MN_N; m++) {
+        uint32_t np;
+        ui.menu = (uint8_t)m, ui.page = 0;
+        np = menu_build();
+        for (pg = 0; pg < np; pg++) {
+            if (m == MN_PRESETS && pg == 0u)
+                continue;
+            snprintf(n, sizeof n, "menu-%s-%u", MN[m], pg + 1);
+            page(dir, n, m, pg);
+        }
+    }
+    ui.menu = MN_HOME;
+    dlg_open(DLG_SAVE, 3);
+    run(200);
+    shot(dir, "dialog-save");
+    ui.dlg = 0;
+    ui.help = 1;
+    for (t = 0; t < 6u; t++) {
+        ui.help_panel = (uint8_t)t;
+        ui.help_t = fm1_ms;
+        fm1_ms += 300;
+        draw_frame();
+        snprintf(n, sizeof n, "help-%u", t + 1);
+        shot(dir, n);
+    }
+}
+
 int main(int argc, char **argv)
 {
     const char *dir = argc > 1 ? argv[1] : ".";
@@ -135,6 +201,10 @@ int main(int argc, char **argv)
     preset_make(0, &pt);
     ui_init();
     fm1_in.frames = 400;
+    if (argc > 2 && !strcmp(argv[2], "docs")) {
+        docs(dir);
+        return 0;
+    }
     for (t = 0; t <= 2000u; t += 100u) {               /* the boot scene, frame by frame */
         char n[32];
         boot_frame(t);

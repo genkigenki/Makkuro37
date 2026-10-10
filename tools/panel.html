@@ -1,0 +1,129 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only
+     Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com>
+     The SMK-37 Pro from above, neon lines on black, with one lesson's controls lit (docs/img/panel-*.png).
+     panel.html?l=1 .. ?l=8, ?l=map (all controls named). tools/docs_panels.sh renders them. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Makkuro37 panel</title>
+<style>html, body { margin: 0; background: #000; overflow: hidden; } canvas { display: block; }</style>
+</head>
+<body>
+<canvas id="c" width="1600" height="680"></canvas>
+<script>
+/* positions measured on a top-view photo of the SMK-37 Pro (1600 x 899 px; body x 30..1578, y 138..748) */
+const Y0 = 100;                                                     // (the image starts at photo y 100)
+const CY = "#3cf0ff", MG = "#ff3cd2", WH = "#ffffff";
+const COL = ["#ff4040", "#ff9614", "#ffe61e", "#46e646", "#14dcff", "#4678ff", "#aa5aff", "#ff5ad2"];
+const C = [];                                                       // [id, kind, x, y, w, h, colour, name]
+const add = (id, kind, x, y, w, h, col, name) => C.push({ id, kind, x, y: y - Y0, w, h, col, name });
+add("pitch", "wheel", 84, 278, 55, 145, MG, "PITCH");
+add("mod", "wheel", 162, 278, 55, 145, MG, "MOD");
+add("screen", "screen", 300, 222, 124, 115, CY, "SCREEN");
+[["kb", "KNOB BANK"], ["fb", "FADER BANK"], ["left", "<"], ["right", ">"], ["octdn", "OCT -"], ["octup", "OCT +"]]
+  .forEach(([id, n], i) => add(id, "btn", i & 1 ? 323 : 270, 323 + (i >> 1) * 27, 48, 22, CY, n));
+for (let i = 0; i < 8; i++) add("k" + (i + 1), "knob", 453 + i * 94, 197, 60, 60, COL[i], "K" + (i + 1));
+for (let i = 0; i < 16; i++) add("p" + (i + 1), "pad", 453 + (i & 7) * 94, i < 8 ? 277 : 348, 74, 56, COL[i & 7],
+  i < 8 ? String(i + 1) : ["1", "2", "3", "4", "5", "P", "H", "C"][i - 8]);
+for (let j = 0; j < 4; j++) add("f" + (j + 1), "fader", 1222 + j * 96, 242, 75, 125, CY, "F" + (j + 1));
+const SBX = [1227, 1285, 1342, 1400, 1457, 1514];
+[["arp", "ARP"], ["repeat", "NOTE REPEAT"], ["scale", "SCALE"], ["chord", "CHORD"], ["globe", "GLOBE"], ["bt", "BT"],
+ ["patch", "PATCH"], ["para", "PARA"], ["fx", "FX"], ["seq", "SEQ"], ["play", "SEQ PLAY"], ["rec", "SEQ REC"]]
+  .forEach(([id, n], i) => add(id, "btn", SBX[i % 6], i < 6 ? 352 : 380, 48, 21, CY, n));
+add("keys", "keys", 805, 602, 1454, 280, CY, "KEYS");
+
+/* the lessons: the controls lit, and what to call them */
+const L = {
+  1: { patch: "PATCH: PRESETS", p1: "pads: a preset", kb: "KNOB BANK: home", screen: "" },
+  2: { k1: "K1-K8: pitch", k2: "", k3: "", k4: "", k5: "", k6: "", k7: "", k8: "", p1: "top pads: wake / sleep", p2: "", p3: "",
+       p4: "", p5: "", p6: "", p7: "", p8: "", screen: "" },
+  3: { f1: "F1 CUTOFF", f2: "F2 RESO", f3: "F3 LFO RATE", f4: "F4 LFO DEPTH", fb: "FADER BANK", mod: "MOD", pitch: "PITCH" },
+  4: { para: "VOICE", chord: "ENV", repeat: "MOD", globe: "MIX", scale: "TUNING", bt: "LFO", fx: "FX", arp: "KEYS", seq: "SEQ",
+       left: "< > pages", right: "", kb: "home", k1: "K1-K8: the column's value", k2: "", k3: "", k4: "", k5: "", k6: "", k7: "", k8: "" },
+  5: { play: "SEQ PLAY: FREE-PLAY", rec: "SEQ REC: HOLD", keys: "keys wake the drones", octdn: "OCT - +", octup: "" },
+  6: { p9: "steps 1-5", p10: "", p11: "", p12: "", p13: "", p14: "P: pulser", seq: "SEQ menu", k1: "K1-K5: step levels", k2: "", k3: "", k4: "", k5: "" },
+  7: { p16: "C: CHAOS", p15: "H: HOLD ALL", chord: "ENV: GATE = CASCADE", seq: "SEQ: MOTION", p1: "top pads", p2: "" },
+  8: { patch: "PATCH: PRESETS (held: SETUP)", left: "< > theme", right: "", k1: "K1-K8: slot", k2: "", k3: "", k4: "", k5: "", k6: "", k7: "",
+       k8: "", p1: "pads: a preset", p2: "", p3: "", p4: "", p5: "", p6: "", p7: "", p8: "", p9: "", p10: "", p11: "", p12: "", p13: "",
+       p14: "", p15: "", p16: "" },
+};
+const q = new URLSearchParams(location.search).get("l") || "map";
+const MAP = q === "map", HL = MAP ? {} : L[q] || {};
+
+const cx = document.getElementById("c").getContext("2d");
+function rr(x, y, w, h, r) { cx.beginPath(); cx.roundRect(x - w / 2, y - h / 2, w, h, r); }
+function glow(col, on) { cx.shadowColor = col; cx.shadowBlur = on ? 18 : 6; }
+function draw() {
+  cx.fillStyle = "#000"; cx.fillRect(0, 0, 1600, 680);
+  cx.lineWidth = 2; glow(CY, 0); cx.strokeStyle = CY; cx.globalAlpha = .55;
+  cx.beginPath(); cx.roundRect(30, 138 - Y0, 1548, 610, 26); cx.stroke();          // the body
+  cx.beginPath(); cx.roundRect(78, 462 - Y0, 1454, 280, 10); cx.stroke();          // the keybed well
+  for (const c of C) {
+    const on = c.id in HL, col = c.col;
+    cx.globalAlpha = MAP ? .9 : on ? 1 : .28;
+    cx.strokeStyle = on ? WH : col; cx.fillStyle = col; glow(col, on); cx.lineWidth = on ? 3 : 2;
+    if (c.kind === "knob") {
+      cx.beginPath(); cx.arc(c.x, c.y, 30, 0, 7); if (on) cx.fill(); cx.stroke();
+      cx.beginPath(); cx.moveTo(c.x, c.y); cx.lineTo(c.x, c.y - 24); cx.strokeStyle = on ? "#000" : col; cx.stroke();
+    } else if (c.kind === "pad" || c.kind === "btn") {
+      rr(c.x, c.y, c.w, c.h, 6); if (on) cx.fill(); cx.stroke();
+    } else if (c.kind === "screen") {
+      rr(c.x, c.y, c.w, c.h, 6); cx.stroke(); rr(c.x - 2, c.y + 4, 105, 103, 3);
+      if (on) { cx.fillStyle = "#0a3440"; cx.fill(); } cx.stroke();
+    } else if (c.kind === "wheel") {
+      rr(c.x, c.y, c.w, c.h, 8); if (on) cx.fill(); cx.stroke();
+      for (let i = -3; i <= 3; i++) { cx.beginPath(); cx.moveTo(c.x - 18, c.y + i * 16); cx.lineTo(c.x + 18, c.y + i * 16); cx.stroke(); }
+    } else if (c.kind === "fader") {
+      rr(c.x, c.y, 8, 120, 4); cx.stroke();
+      rr(c.x, c.y + 10, c.w, 25, 4); if (on) cx.fill(); cx.stroke();
+    } else if (c.kind === "keys") {
+      const SW = 66.09, BL = [0, 1, 3, 4, 5, 7, 8, 10, 11, 12, 14, 15, 17, 18, 19];
+      for (let j = 0; j < 22; j++) { rr(78 + (j + .5) * SW, 602 - Y0, SW - 6, 270, 5); if (on) { cx.fillStyle = "#0a5866"; cx.fill(); } cx.stroke(); }
+      cx.strokeStyle = on ? WH : MG; cx.shadowColor = MG;
+      for (const j of BL) { rr(78 + (j + 1) * SW, 547 - Y0, 40, 160, 4); cx.fillStyle = on ? MG : "#12020e"; cx.fill(); cx.stroke(); }
+    }
+  }
+  /* the names: lit controls (or all, on the map), big, with a short line to their control */
+  cx.shadowBlur = 0; cx.globalAlpha = 1; cx.textAlign = "center"; cx.textBaseline = "middle";
+  const tags = [];
+  for (const c of C) {
+    const t = MAP ? c.name : HL[c.id];
+    if (!t) continue;
+    tags.push([c, t]);
+  }
+  for (const [c, t] of tags) {
+    const big = !MAP, py = c.y + Y0;                                // (py: photo y)
+    let tx = c.x, ty, al = "center", fs = big ? 22 : 14;
+    if (c.kind === "keys") ty = 602 - Y0;
+    else if (c.kind === "knob") ty = c.y - 50;
+    else if (c.kind === "fader") ty = c.y - 82 - (MAP ? 0 : (+c.id[1] & 1 ? 0 : 1) * 28);
+    else if (c.kind === "pad") ty = c.y + (py < 300 ? -42 : 44 + (MAP ? 0 : (+c.id.slice(1) & 1) * 26));
+    else if (c.kind === "wheel") ty = c.y + 92;
+    else if (c.kind === "screen") ty = c.y - 72;
+    else if (c.x > 1000) {                                          // the 2 x 6 grid: staggered above / below
+      const i = SBX.indexOf(c.x), up = py < 360;
+      fs = big ? 18 : 13;
+      ty = up ? c.y - 24 - (i & 1) * 22 : c.y + 24 + (i & 1) * 22;
+    } else if (MAP) {                                               // the six by the screen: inside, short
+      fs = 11; ty = c.y;
+      tx = c.x;
+    } else if (c.x < 300) { tx = c.x - 32; ty = c.y; al = "right"; }
+    else { tx = 297; ty = 420 - Y0; }                               // (right column: under the block)
+    let txt = t;
+    if (MAP && c.kind === "btn" && c.x < 400) txt = { "KNOB BANK": "KNOB", "FADER BANK": "FADER" }[t] || t;
+    cx.font = `700 ${fs}px system-ui, sans-serif`;
+    if (al === "center") tx = Math.min(1592 - cx.measureText(txt).width / 2, Math.max(8 + cx.measureText(txt).width / 2, tx));
+    cx.textAlign = al;
+    if (big) {                                                      // (a dark plate under the words)
+      const w = cx.measureText(txt).width + 12, ax = al === "right" ? tx - w + 6 : al === "left" ? tx - 6 : tx - w / 2;
+      cx.fillStyle = "#000d"; cx.fillRect(ax, ty - fs * .7, w, fs * 1.4);
+    }
+    cx.fillStyle = MAP ? "#e8fbff" : WH;
+    cx.fillText(txt, tx, ty);
+  }
+}
+draw();
+</script>
+</body>
+</html>
