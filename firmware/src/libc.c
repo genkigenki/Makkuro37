@@ -55,6 +55,13 @@ static void str_cpy(char *d, const char *s, unsigned max)
     d[i] = 0;
 }
 
+static void str_cat(char *d, const char *s, unsigned max)
+{
+    unsigned n = str_len(d);
+    if (n < max)
+        str_cpy(d + n, s, max - n);
+}
+
 /* decimal with an optional fixed point: fmt_fix(buf, -63, 1) -> "-6.3" */
 static void fmt_fix(char *b, int32_t v, int decimals)
 {

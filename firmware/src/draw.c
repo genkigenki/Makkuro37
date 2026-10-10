@@ -221,12 +221,19 @@ static void home_bottom(void)
         if ((int32_t)(ui.msg_until - fm1_ms) > 0)
             text_c(120, 26, &FONT_L, ui.msg, RGB(255, 255, 255));
         else
-            for (v = 0; v < NV; v++) {                   /* each voice's pitch (Ki): up / down from the middle */
-                int32_t x = COLW * (int32_t)v + COLW / 2, y = 42 - pt.v[v][VP_PITCH] * 34 / 2400;
-                uint16_t c = rgbk(VCOL[v], 256);
-                cv_rect(x - 1, 6, 2, 72, RGB(50, 46, 70));
-                cv_rect(x - 9, 41, 18, 2, RGB(90, 84, 120));
-                cv_rect(x - 8, y - 4, 16, 8, c);
+            for (v = 0; v < NV; v++) {                   /* each voice's note, big, staggered: 1 3 5 7 up, 2 4 6 8 down */
+                char b[16];
+                int32_t x = COLW * (int32_t)v + COLW / 2, y = (v & 1u) ? 44 : 6, c;
+                if (VTYPE[v] == VT_VCO && !kb.played)
+                    str_cpy(b, "-", sizeof b);
+                else {
+                    c = voice_base(v) + pt.v[v][VP_PITCH];
+                    c = (c + 50) / 100 * 100;            /* (the nearest note) */
+                    cents_text(b, sizeof b, c);
+                }
+                cv_rect(x - 1, (v & 1u) ? 2 : 38, 2, 4, rgbk(VCOL[v], 160));   /* (a tick up to its creature) */
+                text_c(clamp(x, text_w(&FONT_L, b) / 2, 240 - text_w(&FONT_L, b) / 2), y, &FONT_L, b,
+                       rgbk(VCOL[v], 256));
             }
     }
     cv_blit(0, 156);
@@ -367,29 +374,30 @@ static void menu_bottom(void)
 static void presets_screen(void)
 {
     uint32_t k;
-    const char *nm = PRESET_NAME[ui.pre_sel % NPRESET];
-    const felucca_font_t *f = text_w(&FONT_XL, nm) <= 236 ? &FONT_XL : &FONT_L;
-    char b[8];
+    uint32_t th = ui.pre_sel / PRESET_PAGE;
+    char nm[32], b[8];
+    const felucca_font_t *f;
+    fmt_int(nm, ui.pre_sel % PRESET_PAGE + 1);
+    str_cat(nm, " ", sizeof nm);
+    str_cat(nm, PRESET_NAME[ui.pre_sel % NPRESET], sizeof nm);
+    f = text_w(&FONT_XL, nm) <= 236 ? &FONT_XL : &FONT_L;
     cv_begin(240, 124, C_BG);
-    fmt_int(b, ui.pre_sel % PRESET_PAGE + 1);
-    cv_text(4, 0, &FONT_L, b, rgbk(VCOL[(ui.pre_sel % PRESET_PAGE) & 7u], 256));
-    cv_text(236 - text_w(&FONT_L, THEME_NAME[ui.pre_sel / PRESET_PAGE]), 0, &FONT_L, THEME_NAME[ui.pre_sel / PRESET_PAGE],
-            RGB(255, 220, 90));
-    text_c(120, 40, f, nm, RGB(255, 255, 255));
-    text_c(120, 94, &FONT_L, "< THEME >", RGB(150, 140, 190));
+    cv_text(4, 0, &FONT_L, THEME_NAME[th], RGB(255, 220, 90));          /* the theme, and which of how many */
+    fmt_int(b, th + 1);
+    str_cat(b, "/", sizeof b);
+    fmt_int(b + str_len(b), NTHEME);
+    cv_text(236 - text_w(&FONT_L, b), 0, &FONT_L, b, RGB(150, 140, 190));
+    text_c(120, 44, f, nm, RGB(255, 255, 255));
+    text_c(120, 94, &FONT_L, "< >  THEME", RGB(150, 140, 190));
     cv_blit(0, 32);
     cv_begin(240, 84, C_BG);
-    for (k = 0; k < 16u; k++) {                          /* the pads as they are lit */
+    for (k = 0; k < 16u; k++) {                          /* the pads as they are lit: one preset each */
         uint32_t base = (ui.pre_sel / PRESET_PAGE) * PRESET_PAGE;
         int32_t x = 4 + 29 * (int32_t)(k & 7u), y = k < 8u ? 2 : 30;
-        uint16_t c = k < 14u ? (base + k < NPRESET ? rgbk(VCOL[k & 7u], base + k == ui.pre_sel ? 256 : 60) : RGB(20, 18, 28))
-                             : k == 14u ? RGB(255, 40, 40) : RGB(40, 230, 70);
+        uint16_t c = base + k < NPRESET ? base + k == ui.preset ? RGB(255, 255, 255) : rgbk(VCOL[k & 7u], 160) : RGB(20, 18, 28);
         cv_rect(x, y, 25, 25, c);
-        if (base + k == ui.pre_sel)
-            cv_rect(x + 8, y + 8, 9, 9, RGB(255, 255, 255));
     }
-    text_c(60, 58, &FONT_L, "X", RGB(255, 60, 60));
-    text_c(180, 58, &FONT_L, "OK", RGB(60, 240, 90));
+    text_c(120, 56, &FONT_L, "PATCH: HOME", RGB(150, 140, 190));
     cv_blit(0, 156);
 }
 

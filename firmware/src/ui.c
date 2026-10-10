@@ -54,6 +54,7 @@ enum { EV_GATE_ON = 1, EV_GATE_OFF, EV_V, EV_G };
 
 static void keys_poll(void);
 static void midi_poll(void);
+static void faders_sync(void);
 static void mo_toggle(void);
 static void free_play(uint32_t on);
 static void free_release_all(void);
@@ -400,6 +401,7 @@ static void autogate(void)                              /* a preset's voices sta
 static void preset_load(uint32_t n)
 {
     preset_make(n % NPRESET, &pt);
+    faders_sync();                                      /* (what the faders hold stays theirs) */
     ui.preset = (uint8_t)(n % NPRESET);
     pulser_inc = 0;
     md.restart = 1;
@@ -440,6 +442,7 @@ static void morph_turn(uint32_t slot, int32_t s)
         pt.g[k] = (int16_t)(d->fmt == F_ENUM || d->fmt == F_ONOFF || d->fmt == F_BITS ? (m < 64u ? a : b)
                                                                                       : a + (b - a) * (int32_t)m / 127);
     }
+    faders_sync();
 }
 
 static void dlg_open(uint32_t kind, uint32_t arg)
@@ -461,14 +464,23 @@ static void it_turn(const item_t *it, uint32_t e, int32_t s)
         else
             settings.console = s > 0;
         return;
-    case IK_LOAD:
-        if ((scene_used >> it->voice) & 1u)
-            dlg_open(DLG_LOAD, it->voice);
-        else
+    case IK_LOAD: {
+        char d[2] = {(char)('1' + it->voice), 0};
+        if (scene_load(it->voice) == 0) {
+            faders_sync();
+            settings.scene = (uint8_t)(it->voice + 1u);
+            ui_say("LOADED ", d);
+        } else
             ui_say("EMPTY", 0);
         return;
-    case IK_SAVE:
-        dlg_open(DLG_SAVE, it->voice);
+    }
+    case IK_SAVE:                                       /* over a stored scene: asks (green OK, red cancel) */
+        if ((scene_used >> it->voice) & 1u)
+            dlg_open(DLG_SAVE, it->voice);
+        else {
+            char d[2] = {(char)('1' + it->voice), 0};
+            ui_say(scene_save(it->voice) ? "SAVE FAILED " : "SAVED ", d);
+        }
         return;
     case IK_MORPH:
         morph_turn(it->voice, s);
@@ -707,15 +719,12 @@ static void pads_poll(void)
             }
             continue;
         }
-        if (ui.menu == MN_PRESETS && ui.page == 0u) {   /* the preset picker: pads 1..14, 15 cancel, 16 OK */
+        if (ui.menu == MN_PRESETS && ui.page == 0u) {   /* the preset picker: a pad = a preset, heard at once */
             if (!vel)
                 continue;
-            if (pad < PRESET_PAGE && (ui.pre_sel / PRESET_PAGE) * PRESET_PAGE + pad < NPRESET) {
+            if ((ui.pre_sel / PRESET_PAGE) * PRESET_PAGE + pad < NPRESET) {
                 ui.pre_sel = (uint8_t)((ui.pre_sel / PRESET_PAGE) * PRESET_PAGE + pad);
                 preset_load(ui.pre_sel);                /* (heard at once) */
-            } else if (pad == 15u || pad == 14u) {
-                ui.menu = MN_HOME;
-                ui.dirty = 1;
             }
             continue;
         }
@@ -790,26 +799,46 @@ static void wheels_poll(void)
 }
 
 /* ------------------------------------------------------------- faders: the effects and the filter --- */
+/* The faders are absolute: what they control always has their position (read at power-on, applied on every
+ * move, after a preset, a scene, a morph and a bank change). Faders win. */
+static const uint8_t FAD_G1[2][4] = {{G_FFL, G_FRL, G_FMR, G_FMD}, {G_BLEND, G_BLENDR, G_FXLX, G_TAPE}};
+static const uint8_t FAD_G2[2][4] = {{G_FFR, G_FRR, 0xFF, 0xFF}, {0xFF, 0xFF, G_FXRX, 0xFF}};
+static uint8_t fad_ready;
+static void fader_set(uint32_t i, uint32_t v)
+{
+    pt.g[FAD_G1[ui.fbank][i]] = (int16_t)v;         /* A: cutoff, resonance (both filters), their LFO; */
+    if (FAD_G2[ui.fbank][i] != 0xFF)                 /* B: the effects' blend L / R, SPACE, TAPE */
+        pt.g[FAD_G2[ui.fbank][i]] = (int16_t)v;
+}
+static void faders_sync(void)                       /* all four, as they stand */
+{
+    uint32_t i;
+    if (!fad_ready)
+        return;
+    for (i = 0; i < 4u; i++)
+        fader_set(i, fm1_in.fader[i]);
+}
 static void faders_poll(void)
 {
     static const char *const NAME[2][4] = {{"CUTOFF", "RESO", "FMOD RATE", "FMOD DEPTH"}, {"FX L", "FX R", "SPACE", "TAPE"}};
-    static const uint8_t G1[2][4] = {{G_FFL, G_FRL, G_FMR, G_FMD}, {G_BLEND, G_BLENDR, G_FXLX, G_TAPE}};
-    static const uint8_t G2[2][4] = {{G_FFR, G_FRR, 0xFF, 0xFF}, {0xFF, 0xFF, G_FXRX, 0xFF}};
     uint32_t i;
-    if (fm1_in.frames < 200u)
+    if (fm1_in.frames < 200u)                       /* (the first readings settle) */
         return;
+    if (!fad_ready) {
+        fad_ready = 1;
+        for (i = 0; i < 4u; i++)
+            ui.fad_last[i] = fm1_in.fader[i];
+        faders_sync();
+        return;
+    }
     for (i = 0; i < 4u; i++) {
         uint32_t v = fm1_in.fader[i];
         char b[8];
-        if (ui.fad_last[i] == 0xFF || v == ui.fad_last[i]) {   /* takes over once it moves */
-            ui.fad_last[i] = (uint8_t)v;
+        if (v == ui.fad_last[i])
             continue;
-        }
         ui.fad_last[i] = (uint8_t)v;
-        pt.g[G1[ui.fbank][i]] = (int16_t)v;         /* A: cutoff, resonance (both filters), their LFO; */
-        if (G2[ui.fbank][i] != 0xFF)                 /* B: the effects' blend L / R, SPACE, TAPE */
-            pt.g[G2[ui.fbank][i]] = (int16_t)v;
-        mo_add(EV_G, 0, G1[ui.fbank][i], (int32_t)v);
+        fader_set(i, v);
+        mo_add(EV_G, 0, FAD_G1[ui.fbank][i], (int32_t)v);
         fmt_int(b, (int32_t)v);
         big_show(8, NAME[ui.fbank][i], b);
     }
@@ -892,8 +921,10 @@ static void buttons_poll(void)
         case B_LEFT:
         case B_RIGHT: {
             int32_t d = b == B_RIGHT ? 1 : -1;
-            if (ui.menu == MN_HOME)                     /* home: the next preset (asks) */
-                dlg_open(DLG_PRESET, (ui.preset + NPRESET + (uint32_t)d) % NPRESET);
+            if (ui.menu == MN_HOME) {                   /* home: the next preset */
+                preset_load((ui.preset + NPRESET + (uint32_t)d) % NPRESET);
+                ui_say(PRESET_NAME[ui.preset], 0);
+            }
             else if (ui.menu == MN_PRESETS && ui.page == 0u) {   /* the themes: a page of 14 each */
                 uint32_t np = (NPRESET + PRESET_PAGE - 1u) / PRESET_PAGE, pg = (ui.pre_sel / PRESET_PAGE + np + (uint32_t)d) % np;
                 ui.pre_sel = (uint8_t)(pg * PRESET_PAGE);
@@ -916,9 +947,9 @@ static void buttons_poll(void)
             if (ui.oct < 3) ui.oct++;
             ui_say(ui.oct ? "TRANSPOSE " : "TRANSPOSE 0", ui.oct < 0 ? "-" : ui.oct ? "+" : 0);
             break;
-        case B_FADERBANK:                               /* the faders: filter <-> effects */
+        case B_FADERBANK:                               /* the faders: filter <-> effects (applied at once) */
             ui.fbank ^= 1u;
-            ui.fad_last[0] = ui.fad_last[1] = ui.fad_last[2] = ui.fad_last[3] = 0xFF;
+            faders_sync();
             ui_say(ui.fbank ? "FADERS: FX" : "FADERS: FILTER", 0);
             break;
         case B_PLAY:                                    /* FREE-PLAY: the keys wake the drones */
@@ -1014,17 +1045,17 @@ static void ui_leds(void)
         PAD(15, 0, 255, 0, 256);
         return;
     }
-    if (ui.menu == MN_PRESETS && ui.page == 0u) {       /* the picker: 14 presets, red cancel, green OK */
+    if (ui.menu == MN_PRESETS && ui.page == 0u) {       /* the picker: 16 presets, the one playing white */
         uint32_t base = (ui.pre_sel / PRESET_PAGE) * PRESET_PAGE;
-        for (v = 0; v < 14u; v++) {
+        for (v = 0; v < 16u; v++) {
             const uint8_t *c = VCOL[v & 7u];
-            if (base + v < NPRESET)
-                PAD(v, c[0], c[1], c[2], base + v == ui.pre_sel ? 256 : 30);
+            if (base + v == ui.preset)
+                PAD(v, 255, 255, 255, 256);
+            else if (base + v < NPRESET)
+                PAD(v, c[0], c[1], c[2], 150);
             else
                 padled_set(v, 0, 0, 0);
         }
-        PAD(14, 255, 0, 0, 256);
-        PAD(15, 0, 255, 0, 256);
         return;
     }
     for (v = 0; v < NV; v++) {
