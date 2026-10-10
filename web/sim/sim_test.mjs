@@ -23,7 +23,7 @@ function run(sec) {
 run(0.5);
 check("silent at power-on (the presets)", peak < 0.001);
 ex.sim_pad(0, 110); run(0.05); ex.sim_pad(0, 0);       // pick preset 1 (heard at once)
-ex.sim_pad(15, 110); run(0.05); ex.sim_pad(15, 0);     // green: OK, home
+ex.sim_button(0, 1); run(0.05); ex.sim_button(0, 0);  // KNOB BANK: home
 for (const p of [0, 1, 5]) { ex.sim_pad(p, 110); run(0.05); ex.sim_pad(p, 0); run(0.05); }   // (toggles some off)
 for (const p of [0, 2, 5]) { ex.sim_pad(p, 110); run(0.05); ex.sim_pad(p, 0); run(0.05); }
 const load = run(4);

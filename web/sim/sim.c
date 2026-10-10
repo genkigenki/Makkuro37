@@ -141,8 +141,8 @@ EXPORT void sim_init(void)
     ui_init();
     fm1_in.wheel[0] = 540;                       /* (the wheels at rest) */
     fm1_in.wheel[1] = 615;
-    for (i = 0; i < 4u; i++)
-        fm1_in.fader[i] = 96;
+    for (i = 0; i < 4u; i++)                     /* (as the page's faders start: cutoff, a little resonance) */
+        fm1_in.fader[i] = (uint8_t)(i == 0u ? 112 : i == 1u ? 16 : i == 2u ? 40 : 0);
     lcd_fill(0, 0, 240, 240, C_BG);
     main_step();
 }
