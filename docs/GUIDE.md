@@ -2,9 +2,13 @@
 
 Eight lessons, about five minutes each. Do the step and listen.
 
-Lost at any point? Tap **KNOB BANK** to go back to the creatures. Hold **KNOB BANK** for HELP.
+Two buttons are always there for you: **KNOB BANK** shows the presets, **PATCH** takes you home to the
+creatures. Hold **KNOB BANK** for HELP.
 
 ![The controls](img/panel-map.png)
+
+Every menu works the same way: its button opens it at page 1, **< >** turn the pages, knob **K1-K8** sets
+column 1-8, and a setting with two choices sits on the column's pads. The full map: [CONTROLS.md](CONTROLS.md).
 
 ---
 
@@ -14,12 +18,11 @@ Lost at any point? Tap **KNOB BANK** to go back to the creatures. Hold **KNOB BA
 
 <img src="img/screen-presets-1.png" width="240" alt="PRESETS screen">
 
-1. Switch on. You see the boot scene, then **PRESETS**.
+1. Switch on. After the boot scene you see **PRESETS**.
 2. Tap any **pad**. You hear that preset straight away. The pad you are hearing is white.
-3. Tap a few other pads.
-4. Press **<** or **>** to change the theme: DRONES, ABRAXAS, NATURE, SCI-FI, ORGAN, PULSE.
-5. Tap **KNOB BANK**. You see the creatures. The awake ones are singing.
-6. **PATCH** takes you back to PRESETS.
+3. Press **<** or **>** to change the theme: DRONES, ABRAXAS, NATURE, SCI-FI, ORGAN, PULSE, MINE.
+4. Press **PATCH**. You see the creatures. The awake ones are singing.
+5. Press **KNOB BANK** to come back to the presets.
 
 ## 2. Tuning the creatures
 
@@ -27,25 +30,25 @@ Lost at any point? Tap **KNOB BANK** to go back to the creatures. Hold **KNOB BA
 
 <img src="img/screen-home-pitch.png" width="240" alt="Home screen, a voice retuned">
 
-1. On the creatures screen, each column is one drone: knob above, creature and note in the middle, pads below.
+1. On the creatures screen, each column is one drone: knob above, creature and note in the middle, pad below.
 2. Tap **top pad 3**. Creature 3 wakes up and sings.
 3. Tap it again. It falls asleep.
 4. **Hold** top pad 3 instead. It sings only while you hold it.
 5. Turn **K1**. Drone 1 moves up or down the scale. The note under creature 1 changes.
-6. Turn the other knobs. Each one tunes its own column.
+6. On the creatures screen, **< >** step to the previous or next preset.
 
-## 3. Faders and the mod wheel
+## 3. Faders and wheels
 
 ![Lesson 3 controls](img/panel-3.png)
 
 <img src="img/screen-fader.png" width="240" alt="A fader's value">
 
 1. Move **F1** (CUTOFF) slowly down. The sound gets darker. Its value shows big on the screen.
-2. Raise **F2** (RESO). The filter starts to sing.
-3. Raise **F4** (LFO DEPTH), then move **F3** (LFO RATE). The filter sweeps on its own.
-4. Push the **MOD** wheel up. The filter closes and the resonance rises.
-5. Move the **PITCH** wheel. Everything bends, then springs back.
-6. Press **FADER BANK**. Now the faders are FX L, FX R, SPACE and TAPE. Press it again for the filter.
+2. Raise **F2** (RESONANCE). The filter starts to sing.
+3. Raise **F3** (MOVEMENT). The filter sweeps on its own.
+4. Raise **F4** (SPACE). More reverb.
+5. Push the **MOD** wheel up. The filter closes. Move the **PITCH** wheel: everything bends, then springs back.
+6. Press **FADER BANK**. The effects switch off. Press it again: on.
 
 The faders always win: where a fader stands is what you hear, even after loading a preset.
 
@@ -53,15 +56,16 @@ The faders always win: where a fader stands is what you hear, even after loading
 
 ![Lesson 4 controls](img/panel-4.png)
 
-<img src="img/screen-menu-env-1.png" width="240" alt="ENV menu, ATTACK page">
+<img src="img/screen-menu-envelope-1.png" width="240" alt="ENVELOPE menu, ATTACK page">
 
-1. Press **CHORD**. You see ENV, page ATTACK, with one bar per drone.
-2. Turn **K1**. Drone 1's attack changes. Every knob sets the bar under it.
-3. Press **>**. Next page: RELEASE. Press **<** to go back.
-4. Where a setting has only two choices, the column's **pads** set it: top pad = one, bottom pad = the other.
-5. Press **CHORD** again (or KNOB BANK) to go home.
-6. Try the other menus: **PARA** VOICE, **NOTE REPEAT** MOD, **GLOBE** MIX, **SCALE** TUNING, **BT** LFO,
-   **FX** FX, **ARP** KEYS, **SEQ** SEQ.
+1. Press **CHORD**. You see ENVELOPE 1/6, page ATTACK, one bar per drone.
+2. Turn **K1**. Drone 1's attack changes.
+3. Press **>**. Page 2/6: RELEASE. Press **<** to go back.
+4. Press **CHORD** again, or **PATCH**, to go home.
+5. Try the other menus: **PARA** SOUND, **NOTE REPEAT** MOTION, **SCALE** TUNING, **FX** EFFECTS,
+   **SEQ** SEQUENCER, **ARP** KEYS, **GLOBE** MIX.
+6. In **PARA**, page VOICE 1: K1-K5 tune the five oscillators. The top pads switch each one on or off,
+   the bottom pads switch its modulation.
 
 ## 5. Free-play and hold
 
@@ -81,42 +85,42 @@ The faders always win: where a fader stands is what you hear, even after loading
 
 ![Lesson 6 controls](img/panel-6.png)
 
-<img src="img/screen-menu-seq-1.png" width="240" alt="SEQ menu">
+<img src="img/screen-menu-sequencer-1.png" width="240" alt="SEQUENCER menu">
 
-1. Open PRESETS, theme PULSE, and tap **MOTORIK**. It is already running.
-2. Tap **P** (bottom pad 6) in rhythm. The tempo follows your taps.
+1. Press **KNOB BANK**, go to the theme PULSE and tap **MOTORIK**. It is already running.
+2. Press **PATCH**. On the creatures screen, tap **P** (bottom pad 6) in rhythm. The tempo follows your taps.
 3. Hold **P**. The pulser stops. Tap it to start again.
-4. Tap the **bottom pads 1-5**. Each one switches a step on or off. The playing step is white.
-5. Press **SEQ**. Turn **K1-K5** to set the five step levels.
+4. Press **SEQ**. Turn **K1-K5** to set the five step levels.
+5. Tap the **top pads 1-5**. Each one switches a step on or off. The playing step is white.
+6. Pad 8 is RUN: top on, bottom off.
 
-## 7. Chaos, cascade, motion
+## 7. Chaos, cascade, loop
 
 ![Lesson 7 controls](img/panel-7.png)
 
 <img src="img/screen-chaos.png" width="240" alt="CHAOS">
 
-1. Tap **C** (bottom right). All classic drones get new notes, still inside the scale.
+1. On the creatures screen, tap **C** (bottom right). All classic drones get new notes, still in the scale.
 2. Hold **C** and tap **top pad 2**. Only drone 2 changes.
 3. Tap **H**. Everything that sounds now stays on. Tap **H** again: all off.
-4. Press **CHORD**, then **>** to the GATE page. Turn K2 and K3 to CASCADE.
-   Go home and wake drone 1. Drones 2 and 3 follow, one after the other.
-5. Press **SEQ**, then **>** to MOTION. Turn **K1** right: it records. Tap pads, turn knobs.
-   Turn K1 right again: it loops what you did. Again: it stops.
+4. Press **CHORD**, then **>** to GATE. Turn K2 and K3 to CASCADE. Go home and wake drone 1.
+   Drones 2 and 3 follow, one after the other.
+5. Press **SEQ**, then **>** to LOOP. Tap **top pad 1**: it records. Go home, tap pads, turn knobs.
+   Back in SEQ, LOOP: top pad 1 again plays it in a loop, again stops it.
 
-## 8. Presets and scenes
+## 8. Your own presets
 
 ![Lesson 8 controls](img/panel-8.png)
 
-<img src="img/screen-menu-presets-3.png" width="240" alt="PRESETS, SAVE page">
+<img src="img/screen-presets-7.png" width="240" alt="PRESETS, theme MINE">
 
-1. Press **PATCH**. Tap pads to pick a sound. Use **<** **>** for the themes.
-2. Press **>** past the last theme (PULSE). You reach LOAD, then SAVE, then MORPH. One more **>** brings
-   you back to the first theme.
-3. **SAVE**: turn a slot's knob (K1-K8). An empty slot saves at once. A used slot asks first: green pad OK, red pad
-   cancel.
-4. **LOAD**: turn a slot's knob. That scene loads.
-5. **MORPH**: turn a slot's knob slowly. Your sound glides into that scene.
-6. Hold **PATCH** for SETUP: pad light, USB console, OUTPUT LINE or SPEAKER.
+1. Make a sound you like.
+2. Press **KNOB BANK**, then **<** or **>** until the theme **MINE**: 16 places for your sounds.
+3. **Hold** a dark pad for one second. Your sound is saved there.
+4. Hold a lit pad: the screen asks first. **Green** pad (bottom right) = replace, **red** = cancel.
+5. Tap a lit pad to load your sound.
+6. Hold **PATCH** for SETUP: pad light, USB console, output LINE or SPEAKER, master volume, analog drift,
+   width, tape.
 
 ---
 
@@ -124,12 +128,12 @@ The faders always win: where a fader stands is what you hear, even after loading
 
 | | | |
 |---|---|---|
-| ![](img/screen-home.png) home | ![](img/screen-presets-2.png) PRESETS | ![](img/screen-dialog-save.png) SAVE over a used slot |
-| ![](img/screen-menu-voice-1.png) VOICE: WAVE | ![](img/screen-menu-voice-2.png) VOICE 1 | ![](img/screen-menu-voice-4.png) VOICE 3 (noise) |
-| ![](img/screen-menu-voice-5.png) VOICE 4 (VCO) | ![](img/screen-menu-mod-7.png) MOD: DETUNE | ![](img/screen-menu-mix-1.png) MIX: VOLUME |
-| ![](img/screen-menu-fx-1.png) FX: FILTER | ![](img/screen-menu-fx-2.png) FX: L / R | ![](img/screen-menu-tuning-1.png) TUNING |
-| ![](img/screen-menu-lfo-1.png) LFO | ![](img/screen-menu-keys-1.png) KEYS | ![](img/screen-menu-setup-1.png) SETUP |
-| ![](img/screen-help-1.png) HELP: pads | ![](img/screen-help-3.png) HELP: buttons | ![](img/screen-help-6.png) HELP: faders |
+| ![](img/screen-home.png) home | ![](img/screen-presets-2.png) PRESETS | ![](img/screen-dialog-save.png) replace a saved one |
+| ![](img/screen-menu-sound-1.png) SOUND: WAVE | ![](img/screen-menu-sound-2.png) SOUND: VOICE 1 | ![](img/screen-menu-sound-4.png) SOUND: VOICE 3 (noise) |
+| ![](img/screen-menu-sound-5.png) SOUND: VOICE 4 (VCO) | ![](img/screen-menu-motion-1.png) MOTION: DETUNE | ![](img/screen-menu-mix-1.png) MIX: VOLUME |
+| ![](img/screen-menu-effects-1.png) EFFECTS | ![](img/screen-menu-effects-2.png) EFFECTS: FILTER | ![](img/screen-menu-tuning-1.png) TUNING |
+| ![](img/screen-menu-motion-8.png) MOTION: LFO | ![](img/screen-menu-keys-1.png) KEYS | ![](img/screen-menu-setup-1.png) SETUP |
+| ![](img/screen-help-1.png) HELP: pads | ![](img/screen-help-3.png) HELP: menus | ![](img/screen-help-6.png) HELP: faders |
 
 ## Update mode
 

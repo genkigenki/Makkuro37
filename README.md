@@ -3,9 +3,10 @@
 ![Makkuro37](docs/img/hero.png)
 
 **A microtonal drone synth for the M-Vave SMK-37 Pro.**
-Eight drones in eight columns, each a little soot creature on the screen, with 96 presets in six themes.
+Eight drones in eight columns, each a little soot creature on the screen. 96 presets in six themes, 16 places for
+your own. One logic for every menu: a button opens it, K1-K8 set the eight columns, < > turn the pages.
 
-[Guide](docs/GUIDE.md) · [Web installer](#install) · [Simulator](web/sim/)
+[Guide](docs/GUIDE.md) · [Control map](docs/CONTROLS.md) · [Web installer](#install) · [Simulator](web/sim/)
 
 ## Install
 

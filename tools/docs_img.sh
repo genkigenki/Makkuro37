@@ -7,8 +7,9 @@ set -e
 cd "$(dirname "$0")/.."
 T=$(mktemp -d)
 cc -O2 -w -Ibuild/gen -o "$T/screen" tests/screen.c
-"$T/screen" "$T" docs >/dev/null
+"$T/screen" "$T" docs docs/CONTROLS.md >/dev/null
 mkdir -p docs/img
+rm -f docs/img/screen-*.png
 python3 - "$T" docs/img <<'PY'
 import glob, os, sys
 from PIL import Image
