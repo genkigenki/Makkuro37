@@ -12,9 +12,10 @@ typedef struct {
     uint8_t on;
     lad_t lad;                             /* FILTER LADDER: Melodee's four-pole (analog.c) */
     int32_t cs, rs;                        /* cutoff index, resonance: smoothed (x 256): no zipper from a fader */
-    uint8_t warm;
+    uint8_t warm, side;                    /* side: 1 = R */
+    int32_t wet, wt;                       /* the filtered part (Q15), ramped to wt: on / off without a step */
 } flt_t;
-static flt_t flt[2];
+static flt_t flt[2], flto[2];              /* flto: the type before a change, fading out */
 
 static inline int32_t clip_soft(int32_t x, int32_t knee)   /* linear to knee, then tanh to 2 x knee */
 {
@@ -28,7 +29,7 @@ static inline int32_t clip_soft(int32_t x, int32_t knee)   /* linear to knee, th
     return x < 0 ? -y : y;
 }
 
-static void flt_tick(flt_t *f, int32_t freq, int32_t res, int32_t cv)
+static void flt_tick(flt_t *f, uint32_t mode, int32_t freq, int32_t res, int32_t cv)
 {
     int32_t idx = clamp(freq * 1023 / 127 + cv, 0, 1023), g, k, den;
     res = clamp(res, 0, 127);
@@ -42,13 +43,17 @@ static void flt_tick(flt_t *f, int32_t freq, int32_t res, int32_t cv)
     g = (int32_t)SVF_G[idx];
     k = 131072 - res * 1010;
     f->on = freq < 127 || res > 0 || pt.g[G_FDRIVE] > 0 || cv < 0;
-    if (pt.g[G_FMODE] == FM_DIST) {        /* DIST: drive, bias, a tone low-pass (cutoff) */
+    f->wt = f->on ? 32767 : 0;
+    if (mode == FM_BAND)                   /* BAND: faded in over the cutoff's top 16 steps */
+        f->wt = clamp((1023 - idx) * 128, 0, 32767);
+    if (mode == FM_DIST) {                 /* DIST: drive, bias, a tone low-pass (cutoff) */
         f->on = 1;
+        f->wt = 32767;
         f->drive = 4096 + pt.g[G_FDRIVE] * 220 + res * 60;
         f->a1 = clamp(idx * 32, 2000, 32767);
         return;
     }
-    if (pt.g[G_FMODE] == FM_LADDER) {      /* LADDER: 24 dB, saturating input */
+    if (mode == FM_LADDER) {               /* LADDER: 24 dB, saturating input */
         lad_coef(&f->lad, idx, res);
         f->drive = 4096 + pt.g[G_FDRIVE] * 96;
         return;
@@ -61,22 +66,18 @@ static void flt_tick(flt_t *f, int32_t freq, int32_t res, int32_t cv)
     f->out = ((k + 65536) >> 2) * 32767 / (3 * 16384);                                      /* 1 .. 0.35 */
 }
 
-static void flt_run(flt_t *f, int32_t *x, uint32_t n)
+static void flt_core(flt_t *f, uint32_t mode, int32_t *x, uint32_t n)
 {
     uint32_t i;
     int32_t ic1 = f->ic1, ic2 = f->ic2, a1 = f->a1, a2 = f->a2, a3 = f->a3, dr = f->drive;
-    if (!f->on) {
-        f->ic1 = f->ic2 = 0;
-        return;
-    }
-    if (pt.g[G_FMODE] == FM_LADDER) {          /* (at full rate: at half rate the ringing aliased) */
+    if (mode == FM_LADDER) {                   /* (at full rate: at half rate the ringing aliased) */
         for (i = 0; i < n; i++)
             x[i] = lad_run(&f->lad, (x[i] * dr) >> 12, 0);
         f->ic1 = f->ic2 = 0;
         return;
     }
-    if (pt.g[G_FMODE] == FM_DIST) {
-        int32_t lp = f->ic1, b = f == &flt[0] ? 3000 : -2600;   /* (the sides' bias apart: stereo) */
+    if (mode == FM_DIST) {
+        int32_t lp = f->ic1, b = f->side ? -2600 : 3000;   /* (the sides' bias apart: stereo) */
         for (i = 0; i < n; i++) {
             int32_t y = sat(((x[i] * dr) >> 12) + b) - sat(b);
             lp += ((y - lp) * a1) >> 15;
@@ -91,9 +92,28 @@ static void flt_run(flt_t *f, int32_t *x, uint32_t n)
         v2 = ic2 + (int32_t)(((int64_t)a2 * ic1 + (int64_t)a3 * v3) >> 16);
         ic1 = clip_soft(2 * v1 - ic1, 16000);              /* the band state clipped: growl, no blow-up */
         ic2 = 2 * v2 - ic2;
-        x[i] = ((pt.g[G_FMODE] == FM_BAND ? (v1 * 3) >> 1 : v2) * f->out) >> 15;   /* BAND: the band-pass */
+        x[i] = ((mode == FM_BAND ? (v1 * 3) >> 1 : v2) * f->out) >> 15;   /* BAND: the band-pass */
     }
     f->ic1 = ic1, f->ic2 = ic2;
+}
+/* the filter on x: its wet part glides (~12 ms) to on, off or BAND's fade, so nothing steps */
+static void flt_run(flt_t *f, uint32_t mode, int32_t *x, uint32_t n)
+{
+    int32_t dry[CTL], w0 = f->wet, w1, i;
+    f->wet += clamp(f->wt - f->wet, -2048, 2048);
+    w1 = f->wet;
+    if (!w0 && !w1) {
+        f->ic1 = f->ic2 = 0;
+        return;
+    }
+    for (i = 0; i < (int32_t)n; i++)
+        dry[i] = x[i];
+    flt_core(f, mode, x, n);
+    if (w0 < 32767 || w1 < 32767)
+        for (i = 0; i < (int32_t)n; i++) {
+            int32_t w = w0 + (w1 - w0) * i / (int32_t)n;
+            x[i] = dry[i] + (int32_t)(((int64_t)(x[i] - dry[i]) * w) >> 15);
+        }
 }
 
 /* ------------------------------------------------------------- effector --- */

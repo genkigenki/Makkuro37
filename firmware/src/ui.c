@@ -166,6 +166,7 @@ static void mo_toggle(void);
 static void free_play(uint32_t on);
 static void free_release_all(void);
 static void big_show(uint32_t col, const char *label, const char *val);
+static void big_note(const char *s);
 static void pitch_turn(uint32_t v, int32_t s);
 
 static void ui_say(const char *a, const char *b)
@@ -1048,9 +1049,15 @@ static void buttons_poll(void)
 /* ------------------------------------------------------------- knobs --- */
 /* PRESETS: K1-K8 are filters to hear the presets through: K1-K4 a filter type each (turned: that type, its
  * cutoff), K5-K8 its resonance, drive, movement and the movement's rate */
-static const struct { const char *name; uint8_t mode, id; } LENS[8] = {
-    {"LADDER", FM_LADDER, G_FFL}, {"POLIVOKS", FM_POLIVOKS, G_FFL}, {"BAND", FM_BAND, G_FFL}, {"DIST", FM_DIST, G_FFL},
-    {"RESO", NO, G_FRL}, {"DRIVE", NO, G_FDRIVE}, {"MOVE", NO, G_FMD}, {"M RATE", NO, G_FMR}};
+static const struct { const char *name, *what; uint8_t mode, id; } LENS[8] = {
+    {"LADDER", "SMOOTH 24 DB LOW-PASS", FM_LADDER, G_FFL},
+    {"POLIVOKS", "RAW 12 DB, GROWLS WHEN DRIVEN", FM_POLIVOKS, G_FFL},
+    {"BAND", "BAND-PASS: THIN AND NASAL", FM_BAND, G_FFL},
+    {"DIST", "DISTORTION, THEN A TONE FILTER", FM_DIST, G_FFL},
+    {"RESO", "RESONANCE: THE FILTER SINGS", NO, G_FRL},
+    {"DRIVE", "HOW HARD IT HITS THE FILTER", NO, G_FDRIVE},
+    {"MOVE", "THE FILTER SWEEPS BY ITSELF", NO, G_FMD},
+    {"M RATE", "HOW FAST IT SWEEPS", NO, G_FMR}};
 static void lens_turn(uint32_t k, int32_t s)
 {
     item_t it = {IK_G, LENS[k].id, 0, NO, 0, NO, 0, NO};
@@ -1062,6 +1069,7 @@ static void lens_turn(uint32_t k, int32_t s)
     it_turn(&it, k, s);
     fmt_int(b, it_get(&it));
     big_show(k, LENS[k].name, b);
+    big_note(LENS[k].what);
 }
 
 static void knobs_poll(void)

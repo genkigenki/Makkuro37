@@ -142,16 +142,40 @@ static void synth_block(int32_t *out, uint32_t n)
         bus_l[i] = (bus_l[i] * (m >> 4) * 3) >> 12; /* (x 1.5: a few drones already sound full; the limiter */
         bus_r[i] = (bus_r[i] * (m >> 4) * 3) >> 12; /* keeps many in hand) */
     }
-    {   /* the filter, stereo (R a hair apart and its LFO a quarter on), then the effector */
+    {   /* the filter, stereo (R a hair apart and its LFO a quarter on), then the effector. A new type: the old
+         * one fades out over ~45 ms (flto) */
         int32_t src = pt.g[G_FCVSRC], cv = src ? (modv[src % MS_N] * pt.g[G_FCVAMT]) >> 12 : 0;
-        int32_t fd = pt.g[G_FMD] * pt.g[G_FMD] / 40, rw = (joy_y * 50) >> 15;
-        static uint32_t fph;
+        int32_t fd = pt.g[G_FMD] * pt.g[G_FMD] / 40, rw = (joy_y * 50) >> 15, ol[CTL], or[CTL];
+        uint32_t mode = (uint32_t)pt.g[G_FMODE] & 3u;
+        static uint32_t fph, cur = 0xFFu, old;
+        static int32_t xf;
+        if (cur == 0xFFu)
+            cur = mode;
+        if (mode != cur) {
+            flto[0] = flt[0], flto[1] = flt[1];
+            old = cur, cur = mode, xf = 32767;
+        }
+        flt[1].side = 1;
         fph += LFO_A[pt.g[G_FMR] & 127] * 2u;   /* the filters' LFO: R a quarter on */
-        flt_tick(&flt[0], pt.g[G_FFL], pt.g[G_FRL] + rw, cv + ((SINE[fph >> 22] * fd) >> 15));
-        flt_tick(&flt[1], pt.g[G_FFL], pt.g[G_FRL] + rw,
+        flt_tick(&flt[0], mode, pt.g[G_FFL], pt.g[G_FRL] + rw, cv + ((SINE[fph >> 22] * fd) >> 15));
+        flt_tick(&flt[1], mode, pt.g[G_FFL], pt.g[G_FRL] + rw,
                  cv + 6 + ((SINE[(fph + 0x40000000u) >> 22] * fd) >> 15));   /* (the mod wheel: + res) */
-        flt_run(&flt[0], bus_l, n);
-        flt_run(&flt[1], bus_r, n);
+        if (xf)
+            for (i = 0; i < n; i++)
+                ol[i] = bus_l[i], or[i] = bus_r[i];
+        flt_run(&flt[0], mode, bus_l, n);
+        flt_run(&flt[1], mode, bus_r, n);
+        if (xf) {
+            int32_t x0 = xf;
+            flt_run(&flto[0], old, ol, n);
+            flt_run(&flto[1], old, or, n);
+            xf = xf > 512 ? xf - 512 : 0;
+            for (i = 0; i < n; i++) {
+                int32_t w = x0 + (xf - x0) * (int32_t)i / (int32_t)n;
+                bus_l[i] += (int32_t)(((int64_t)(ol[i] - bus_l[i]) * w) >> 15);
+                bus_r[i] += (int32_t)(((int64_t)(or[i] - bus_r[i]) * w) >> 15);
+            }
+        }
         fx_run(bus_l, bus_r, n);
     }
     tape_block(pt.g[G_TAPE]);

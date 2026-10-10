@@ -158,10 +158,12 @@ static int creature_cell(uint32_t v, int force)
 }
 
 /* the big value: label (L) and value (XL) of what was turned last, in its column's colour */
-static struct { uint32_t until; uint8_t col; char label[16], val[16]; } big;
+static struct { uint32_t until; uint8_t col; char label[16], val[16]; const char *note; } big;
+static void big_note(const char *s) { big.note = s; }  /* a line on what it is: "POLIVOKS 51", then the note */
 static void big_show(uint32_t col, const char *label, const char *val)
 {
     big.until = fm1_ms + 1200u;
+    big.note = 0;
     big.col = (uint8_t)col;
     str_cpy(big.label, label, sizeof big.label);
     str_cpy(big.val, val, sizeof big.val);
@@ -177,6 +179,15 @@ static int big_draw(int32_t y0, int32_t h)               /* into a 240-wide canv
     f = h >= 70 && text_w(&FONT_XL, big.val) <= 236 ? &FONT_XL : &FONT_L;   /* (short room: L, its label S) */
     if (big.col < NV)                                    /* a mark under its column */
         cv_rect(COLW * big.col + 2, y0, COLW - 4, 4, rgbk(c, 256));
+    if (big.note) {
+        char b[32];
+        str_cpy(b, big.label, sizeof b);
+        str_cat(b, " ", sizeof b);
+        str_cat(b, big.val, sizeof b);
+        text_c(120, y0 + 10, &FONT_L, b, rgbk(c, 256));
+        text_c(120, y0 + 50, &FONT_S, big.note, RGB(150, 140, 190));
+        return 1;
+    }
     text_c(120, y0 + 4, h < 70 ? &FONT_S : &FONT_L, big.label, rgbk(c, 200));
     text_c(120, y0 + h - f->h, f, big.val, rgbk(c, 256));
     return 1;
