@@ -390,6 +390,8 @@ static void presets_screen(void)
     text_c(120, 44, f, nm, RGB(255, 255, 255));
     text_c(120, 94, &FONT_L, th < NTHEME ? "< >  THEME" : "HOLD PAD: SAVE", RGB(150, 140, 190));
     cv_blit(0, 32);
+    if (ui.dlg)
+        return;
     cv_begin(240, 84, C_BG);
     for (k = 0; k < 16u; k++) {                          /* the pads as they are lit: one preset each */
         uint32_t m = base + k, has = m < NPRESET || ((user_used >> (m - NPRESET)) & 1u);
@@ -440,7 +442,7 @@ static void faders_screen(void)
 /* ------------------------------------------------------------- a dialog --- */
 static void dialog_screen(void)
 {
-    char q[24] = "SAVE MINE ";
+    char q[24] = "REPLACE ";
     fmt_int(q + str_len(q), ui.dlg_arg + 1);
     str_cat(q, "?", sizeof q);
     cv_begin(240, 84, RGB(0, 0, 0));
@@ -448,7 +450,11 @@ static void dialog_screen(void)
     cv_rect(COLW * 6 + 2, 40, COLW - 4, 40, RGB(255, 40, 40));   /* red: pad 15, green: pad 16 (under them) */
     cv_rect(COLW * 7 + 2, 40, COLW - 4, 40, RGB(40, 230, 70));
     text_c(COLW * 6 + COLW / 2, 44, &FONT_L, "X", RGB(0, 0, 0));
-    text_c(90, 44, &FONT_L, "REPLACE?", RGB(160, 240, 170));
+    cv_thick(COLW * 7 + 7, 60, COLW * 7 + 12, 66, RGB(0, 0, 0));    /* a tick */
+    cv_thick(COLW * 7 + 12, 66, COLW * 7 + 21, 52, RGB(0, 0, 0));
+    text_c(COLW * 6 + COLW / 2, 22, &FONT_S, "NO", RGB(255, 90, 90));
+    text_c(COLW * 7 + COLW / 2 - 4, 22, &FONT_S, "YES", RGB(90, 240, 120));
+    text_c(84, 48, &FONT_S, "PADS 15 / 16", RGB(150, 140, 190));
     cv_blit(0, 156);
 }
 
