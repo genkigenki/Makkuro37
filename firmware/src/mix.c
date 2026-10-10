@@ -14,11 +14,11 @@ static void synth_tick(void)
     for (v = 0; v < NV; v++) {
         vstate_t *s = &vs[v];
         const int16_t *p = pt.v[v];
-        uint32_t gate = gate_in[v] | gate_src((uint32_t)p[VP_GSRC]), vel = gate_vel[v];
+        uint32_t gate = gate_in[v] | gate_src((uint32_t)p[VP_GSRC], v), vel = gate_vel[v];
         int32_t att = clamp(p[VP_ATT] + (100 - (int32_t)vel) / 3, 0, 127);   /* soft pad: slower swell */
         if (VTYPE[v] == VT_VCO) {
             uint32_t i = v - 3u;
-            gate = gate_src((uint32_t)p[VP_GSRC]) | kb.gate[i] | (kb.padhold[i] && kb.played);   /* (keys only) */
+            gate = gate_src((uint32_t)p[VP_GSRC], v) | kb.gate[i] | (kb.padhold[i] && kb.played);   /* (keys only) */
             if (s->trig != kb.trig[i] && kb.gate[i])
                 s->gate = 0;                       /* a new key or arp step: attack again */
             s->trig = kb.trig[i];

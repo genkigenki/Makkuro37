@@ -153,6 +153,19 @@ static void classic_render(vstate_t *s, const int16_t *p, int32_t *o, int32_t *o
         act += s->inc[g] != 0u;
     if (!act)
         return;
+    if (p[CL_SUB]) {                           /* the subharmonic: a square at the lowest generator / DIV */
+        uint32_t g0 = 0, sinc, ph;
+        int32_t k = p[CL_SUB] * p[CL_SUB] >> 2;   /* 0..4032 */
+        while (g0 < 4u && !s->inc[g0])
+            g0++;
+        sinc = s->inc[g0] / (uint32_t)clamp(p[CL_SUBDIV], 2, 8);
+        ph = s->sph;
+        for (i = 0; i < n; i++) {
+            ph += sinc;
+            o[i] += ((ph < 0x80000000u ? 4096 : -4096) + blep(ph, sinc) - blep(ph + 0x80000000u, sinc)) * k >> 12;
+        }
+        s->sph = ph;
+    }
     if (!fm) {                                 /* one generator at a time */
         int32_t k = VNORM[act];
         for (g = 0; g < 5u; g++) {
@@ -357,12 +370,18 @@ static void vco_render(int32_t *o4, int32_t *o5, uint32_t n)
     uint32_t i, wa = (uint32_t)pa[VC_WAVE], wb = (uint32_t)pb[VC_WAVE], pha = a->ph[0], phb = b->ph[0];
     uint32_t ia = a->inc[0], ib = b->inc[0], sync = (uint32_t)pb[VC_SYNC], on_a = o4 != 0, on_b = o5 != 0;
     int32_t fa = a->kv[VK_FM], fb = b->kv[VK_FM], ya = a->last[0], yb;
+    int32_t sa = pa[VC_SUB] * 160, sb = pb[VC_SUB] * 160;   /* sub levels (Q15 units) */
     for (i = 0; i < n; i++) {
         uint32_t inc = ia + (uint32_t)((int32_t)(ia >> 14) * ((ya * fa) >> 15));   /* 4: feedback FM */
         pha += inc;
         ya = vco_wave(a, wa, pha, inc);
-        if (on_a)
+        if (on_a) {
             o4[i] += (ya * 26000) >> 15;
+            if (sa) {                              /* the sub: a square an octave down */
+                a->sph += ia >> 1;
+                o4[i] += ((a->sph < 0x80000000u ? sa : -sa) + ((blep(a->sph, ia >> 1) - blep(a->sph + 0x80000000u, ia >> 1)) * sa >> 15));
+            }
+        }
         if (on_b) {
             inc = ib + (uint32_t)((int32_t)(ib >> 13) * ((ya * fb) >> 15));         /* 5: FM from 4 */
             phb += inc;
@@ -370,6 +389,10 @@ static void vco_render(int32_t *o4, int32_t *o5, uint32_t n)
                 phb = pha;                         /* hard sync: 5 restarts with 4 */
             yb = vco_wave(b, wb, phb, inc);
             o5[i] += (yb * 26000) >> 15;
+            if (sb) {
+                b->sph += ib >> 1;
+                o5[i] += ((b->sph < 0x80000000u ? sb : -sb) + ((blep(b->sph, ib >> 1) - blep(b->sph + 0x80000000u, ib >> 1)) * sb >> 15));
+            }
         }
     }
     a->ph[0] = pha, b->ph[0] = phb, a->last[0] = ya;
@@ -435,10 +458,11 @@ static void mod_tick(void)
     modv[MS_DRIFT] = md.drift;
 }
 
-static uint32_t gate_src(uint32_t s)
+static uint32_t gate_src(uint32_t s, uint32_t v)
 {
     switch (s) {
     case GS_SEQ: return md.gate;
+    case GS_CASC: return v && vs[v - 1u].stage && vs[v - 1u].env > 1 << 23;   /* the voice before: half way up */
     case GS_LFOA: return modv[MS_LFOA] > 16384;
     case GS_LFOB: return modv[MS_LFOB] > 16384;
     default: return 0;

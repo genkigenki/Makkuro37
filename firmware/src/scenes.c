@@ -11,9 +11,10 @@ typedef struct {
     uint8_t console;                       /* USB serial console (CDC) */
     uint8_t boot_scene;                    /* 0 = the power-on sound, 1..8 = that scene */
     uint8_t scene;                         /* the scene loaded last (1..8, 0 = none) */
-    uint8_t rsv[8];
+    uint8_t speaker;                       /* output for the little speaker (analog.c) */
+    uint8_t rsv[7];
 } settings_t;
-static settings_t settings = {SET_MAGIC, 4, 1, 0, 0, {0}};
+static settings_t settings = {SET_MAGIC, 4, 1, 0, 0, 0, {0}};
 static uint8_t scene_used;                 /* bit n: scene n + 1 is stored */
 
 typedef struct {

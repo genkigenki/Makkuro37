@@ -10,7 +10,7 @@ typedef struct {
 } pdesc_t;
 
 static const char *const N_MSRC[MS_N] = {"OFF", "LFO A", "LFO B", "JOY X", "JOY Y", "SEQ", "S&H 3", "S&H 8", "DRIFT"};
-static const char *const N_GSRC[GS_N] = {"PAD", "SEQ", "LFO A", "LFO B"};
+static const char *const N_GSRC[GS_N] = {"PAD", "SEQ", "LFO A", "LFO B", "CASCADE"};
 static const char *const N_RANGE[2] = {"LO", "HI"};
 static const char *const N_MULT[2] = {"X1", "X10"};
 static const char *const N_NMODE[4] = {"DRONE", "FM", "AM", "FM+AM"};
@@ -23,8 +23,8 @@ static const char *const N_KEYS[3] = {"SINGLE", "DUO", "SPLIT"};
 static const char *const N_ARP[6] = {"OFF", "UP", "DOWN", "UP-DN", "RANDOM", "SEQ"};
 static const char *const N_STAGES[3] = {"3", "4", "5"};
 static const char *const N_FX[FX_N] = {"OFF", "ROOM", "DELAY", "SHIMMER", "CHORUS", "PHASER", "CRUSH", "RING", "FREEZE",
-                                       "SPRING", "PLATE"};
-static const char *const N_FMODE[2] = {"LADDER", "POLIVOKS"};
+                                       "SPRING", "PLATE", "RESO"};
+static const char *const N_FMODE[4] = {"LADDER", "POLIVOKS", "BAND", "DIST"};
 #define NOTE12 NOTE_NAMES
 
 /* per voice type; F_TUNE: cents above the generator's lowest note (min / max by generator) */
@@ -33,7 +33,8 @@ static const pdesc_t VDESC[3][VP_N] = {
         {"TUNE 1", 0, 3100, 1200, F_TUNE, 0}, {"TUNE 2", 0, 2000, 800, F_TUNE, 0},
         {"TUNE 3", 0, 2100, 200, F_TUNE, 0}, {"TUNE 4", 0, 2000, 300, F_TUNE, 0},
         {"TUNE 5", 0, 1900, 500, F_TUNE, 0}, {"VOLT", 0, 127, 0, F_NUM, 0},
-        {"MUTE", 0, 31, 0, F_BITS, 0}, {"MOD", 0, 31, 0, F_BITS, 0}, {0}, {0},
+        {"MUTE", 0, 31, 0, F_BITS, 0}, {"MOD", 0, 31, 0, F_BITS, 0}, {"SUB", 0, 127, 0, F_NUM, 0},
+        {"SUB DIV", 2, 8, 3, F_NUM, 0},
         {"ATTACK", 0, 127, 50, F_NUM, 0}, {"RELEASE", 0, 127, 64, F_NUM, 0},
         {"MOD SRC", 0, MS_N - 1, MS_DRIFT, F_ENUM, N_MSRC}, {"MOD AMT", 0, 127, 0, F_NUM, 0},
         {"GATE", 0, GS_N - 1, GS_PAD, F_ENUM, N_GSRC}, {"VOLUME", 0, 127, 96, F_NUM, 0},
@@ -55,7 +56,7 @@ static const pdesc_t VDESC[3][VP_N] = {
         {"OCTAVE", 0, 7, 4, F_ENUM, N_OCT}, {"TUNE", -600, 600, 0, F_CENTS, 0},
         {"FM", 0, 127, 0, F_NUM, 0}, {"SYNC", 0, 1, 0, F_ONOFF, 0},
         {"DECAY", 0, 127, 70, F_NUM, 0}, {"SUSTAIN", 0, 127, 100, F_NUM, 0},
-        {"EG", 0, 2, EG_NORM, F_ENUM, N_EG}, {0},
+        {"EG", 0, 2, EG_NORM, F_ENUM, N_EG}, {"SUB", 0, 127, 0, F_NUM, 0},
         {"ATTACK", 0, 127, 10, F_NUM, 0}, {"RELEASE", 0, 127, 60, F_NUM, 0},
         {"MOD SRC", 0, MS_N - 1, MS_NONE, F_ENUM, N_MSRC}, {"MOD AMT", 0, 127, 0, F_NUM, 0},
         {"GATE", 0, GS_N - 1, GS_PAD, F_ENUM, N_GSRC}, {"VOLUME", 0, 127, 96, F_NUM, 0},
@@ -105,7 +106,7 @@ static const pdesc_t GDESC[G_COUNT] = {
     [G_BLEND] = {"BLEND L", 0, 127, 48, F_NUM, 0},
     [G_DRIFT] = {"ANALOG", 0, 127, 40, F_NUM, 0},
     [G_WIDTH] = {"WIDTH", 0, 60, 24, F_NUM, 0},
-    [G_FMODE] = {"FILTER", 0, 1, 0, F_ENUM, N_FMODE},
+    [G_FMODE] = {"FILTER", 0, 3, 0, F_ENUM, N_FMODE},
     [G_ARP] = {"ARP", 0, 5, AR_OFF, F_ENUM, N_ARP},
     [G_ARATE] = {"RATE", 0, 127, 70, F_NUM, 0},
     [G_AOCT] = {"OCTAVES", 1, 3, 1, F_NUM, 0},
@@ -114,6 +115,7 @@ static const pdesc_t GDESC[G_COUNT] = {
     [G_VIBR] = {"VIB RATE", 0, 127, 50, F_NUM, 0},
     [G_BLENDR] = {"BLEND R", 0, 127, 48, F_NUM, 0},
     [G_AUTOGATE] = {"AUTO", 0, 255, 0, F_NUM, 0},
+    [G_TAPE] = {"TAPE", 0, 127, 24, F_NUM, 0},
 };
 
 /* the power-on sound: four chords on the classic voices, a siren and a wind, two VCOs */

@@ -16,7 +16,7 @@ static const int8_t BTN_MENU[18] = {-1, MN_VOLUME, -1, -1, -1, -1, MN_KEYS, MN_M
 
 enum { IK_NONE, IK_V, IK_G, IK_SET, IK_LOAD, IK_SAVE, IK_MORPH, IK_STEPREC };
 typedef struct { uint8_t kind, id, voice; } item_t;
-enum { SET_BRIGHT, SET_CONSOLE, SET_N };
+enum { SET_BRIGHT, SET_CONSOLE, SET_SPEAKER, SET_N };
 enum { DLG_NONE, DLG_LOAD, DLG_SAVE, DLG_PRESET };
 enum { MO_IDLE, MO_REC, MO_LOOP, MO_STOP };
 #define MO_N 512u
@@ -144,7 +144,16 @@ static uint32_t menu_build(void)
         break;
     }
     case MN_MOD:
-        n = 4;
+        n = 6;
+        if (p >= 4u) {                                  /* the subharmonics (classic), the sub-oscillators (VCO) */
+            for (v = 0; v < NV; v++)
+                if (VTYPE[v] == VT_CLASSIC)
+                    it_set(v, IK_V, p == 4u ? CL_SUB : CL_SUBDIV, v);
+                else if (VTYPE[v] == VT_VCO && p == 4u)
+                    it_set(v, IK_V, VC_SUB, v);
+            name = p == 4u ? "SUB" : "SUB DIV";
+            break;
+        }
         if (p < 2u)
             row_v(p ? VP_MAMT : VP_MSRC), name = p ? "MOD AMT" : "MOD SRC";
         else
@@ -196,7 +205,7 @@ static uint32_t menu_build(void)
         name = p == 0u ? "PRESETS" : p == 1u ? "LOAD" : p == 2u ? "SAVE" : "MORPH";
         break;
     case MN_SETUP:
-        it_set(0, IK_SET, SET_BRIGHT, 0), it_set(1, IK_SET, SET_CONSOLE, 0);
+        it_set(0, IK_SET, SET_BRIGHT, 0), it_set(1, IK_SET, SET_CONSOLE, 0), it_set(2, IK_SET, SET_SPEAKER, 0);
         name = "SETUP";
         break;
     default:
@@ -210,7 +219,9 @@ static uint32_t menu_build(void)
 
 static const pdesc_t *it_desc(const item_t *it)
 {
-    static const pdesc_t SET[SET_N] = {{"LIGHT", 1, 8, 4, F_NUM, 0}, {"CONSOLE", 0, 1, 1, F_ONOFF, 0}};
+    static const char *const N_OUT[2] = {"LINE", "SPEAKER"};
+    static const pdesc_t SET[SET_N] = {{"LIGHT", 1, 8, 4, F_NUM, 0}, {"CONSOLE", 0, 1, 1, F_ONOFF, 0},
+                                       {"OUTPUT", 0, 1, 0, F_ENUM, N_OUT}};
     static const pdesc_t SLOT = {"SLOT", 0, 127, 0, F_NUM, 0};
     switch (it->kind) {
     case IK_V: return &VDESC[VTYPE[it->voice]][it->id];
@@ -226,7 +237,7 @@ static int32_t it_get(const item_t *it)
     switch (it->kind) {
     case IK_V: return pt.v[it->voice][it->id];
     case IK_G: return pt.g[it->id];
-    case IK_SET: return it->id == SET_BRIGHT ? settings.bright : settings.console;
+    case IK_SET: return it->id == SET_BRIGHT ? settings.bright : it->id == SET_CONSOLE ? settings.console : settings.speaker;
     case IK_MORPH: return ui.morph[it->voice];
     case IK_LOAD: case IK_SAVE: return (scene_used >> it->voice) & 1u ? 127 : 0;
     case IK_STEPREC: return kb.seqlen * 8;
@@ -640,6 +651,8 @@ static void pads_poll(void)
                 pt.g[it->id] = (int16_t)nv, mo_add(EV_G, 0, it->id, nv);
             else if (it->id == SET_CONSOLE)
                 settings.console = (uint8_t)nv;
+            else
+                settings.speaker = (uint8_t)nv;
             {
                 char lb[16], vb[16];
                 it_label(it, lb, sizeof lb);
@@ -1036,6 +1049,7 @@ static void ui_input(void)
     knobs_poll();
     faders_poll();
     mo_play();
+    speaker = settings.speaker;
     for (v = 0; v < NV; v++)
         gate_in[v] = VTYPE[v] == VT_VCO ? 0 : ui.pad_gate[v];
 }

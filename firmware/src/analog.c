@@ -63,9 +63,68 @@ static inline int32_t dc_block(int32_t x, int32_t *dc, int32_t *err)
     *dc += d;
     return x - ((*dc + 32) >> 6);
 }
+/* TAPE: a short line read with wow (~0.5 Hz) and flutter (~7 Hz), into a gentle tanh: the drones breathe */
+#define TP_N 1024u
+static int16_t tape_buf[2][TP_N];
+static struct { uint32_t w, wow, flt; } tp;
+static inline void tape(int32_t *l, int32_t *r, int32_t amt)
+{
+    int32_t d, i, f, k;
+    uint32_t w = ++tp.w;
+    tp.wow += 48700u;
+    tp.flt += 681000u;
+    d = (300 << 8) + ((SINE[tp.wow >> 22] * amt) >> 10) + ((SINE[tp.flt >> 22] * amt) >> 13);   /* Q8 samples */
+    i = d >> 8, f = d & 255;
+    for (k = 0; k < 2; k++) {
+        int32_t *x = k ? r : l, a, b;
+        tape_buf[k][w & (TP_N - 1u)] = (int16_t)clamp(*x, -32767, 32767);
+        a = tape_buf[k][(w - (uint32_t)i) & (TP_N - 1u)];
+        b = tape_buf[k][(w - (uint32_t)i - 1u) & (TP_N - 1u)];
+        a += ((b - a) * f) >> 8;
+        *x = sat(a + (a >> 3)) * 7 >> 3;
+    }
+}
+
+/* SPEAKER (setup): the little speaker: two high-pass poles ~150 Hz, and what it cannot play heard through its
+ * harmonics (Melodee's BASS+: the bass clipped at its own level, band-passed, added) */
+static volatile uint8_t speaker;
+static struct { int32_t hp[4], he[4], lp1, lp2, env, h1, h2, hl; } spk;
+static inline int32_t hpass(int32_t x, int32_t *lc, int32_t *err)
+{
+    int32_t e = x - *lc + *err, d = e >> 5;
+    *err = e - (d << 5);
+    *lc += d;
+    return x - *lc;
+}
+static inline int32_t spk_bass(int32_t m)
+{
+    int32_t a, t, u;
+    spk.lp1 += ((m - spk.lp1) * 692) >> 15;
+    spk.lp2 += ((spk.lp1 - spk.lp2) * 692) >> 15;
+    a = spk.lp2 < 0 ? -spk.lp2 : spk.lp2;
+    if (a > spk.env)
+        spk.env += (a - spk.env) >> 2;
+    else if (spk.env > 0)
+        spk.env -= (spk.env >> 11) + 1;
+    t = clamp(spk.lp2 * 8, -spk.env, spk.env);
+    spk.h1 += (t - spk.h1) >> 5;
+    u = t - spk.h1;
+    spk.h2 += (u - spk.h2) >> 5;
+    u -= spk.h2;
+    spk.hl += (u - spk.hl) >> 3;
+    return spk.hl * 3;
+}
+
 static inline void master_out(int32_t *l, int32_t *r)
 {
     int32_t al, ar, a;
+    if (pt.g[G_TAPE])
+        tape(l, r, pt.g[G_TAPE]);
+    if (speaker) {
+        int32_t b = spk_bass((*l + *r) >> 1);
+        *l = hpass(hpass(*l, &spk.hp[0], &spk.he[0]), &spk.hp[1], &spk.he[1]) + b;
+        *r = hpass(hpass(*r, &spk.hp[2], &spk.he[2]), &spk.hp[3], &spk.he[3]) + b;
+    }
     *l = dc_block(*l, &mst.dc[0], &mst.dce[0]);
     *r = dc_block(*r, &mst.dc[1], &mst.dce[1]);
     al = *l < 0 ? -*l : *l;

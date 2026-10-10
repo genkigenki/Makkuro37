@@ -98,7 +98,7 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 /* ---- scenes in RAM (this session) ---- */
 #define NSCENE 8u
 static uint8_t scene_used;
-static struct { uint8_t bright, console, boot_scene, scene; } settings = {4, 0, 0, 0};
+static struct { uint8_t bright, console, boot_scene, scene, speaker; } settings = {4, 0, 0, 0, 0};
 static patch_t scenes[NSCENE];
 static int scene_save(uint32_t n)
 {

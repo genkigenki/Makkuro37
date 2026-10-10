@@ -31,7 +31,13 @@ static void flt_tick(flt_t *f, int32_t freq, int32_t res, int32_t cv)
     int32_t idx = clamp(freq * 1023 / 127 + cv, 0, 1023), g = (int32_t)SVF_G[idx];
     int32_t k = 131072 - clamp(res, 0, 127) * 1010, den;
     f->on = freq < 127 || res > 0 || pt.g[G_FDRIVE] > 0 || cv < 0;
-    if (!pt.g[G_FMODE]) {                  /* LADDER: 24 dB, saturating input */
+    if (pt.g[G_FMODE] == FM_DIST) {        /* DIST: drive, bias, a tone low-pass (cutoff) */
+        f->on = 1;
+        f->drive = 4096 + pt.g[G_FDRIVE] * 220 + res * 60;
+        f->a1 = clamp(idx * 32, 2000, 32767);
+        return;
+    }
+    if (pt.g[G_FMODE] == FM_LADDER) {      /* LADDER: 24 dB, saturating input */
         lad_coef(&f->lad, idx, res);
         f->drive = 4096 + pt.g[G_FDRIVE] * 96;
         return;
@@ -52,10 +58,20 @@ static void flt_run(flt_t *f, int32_t *x, uint32_t n)
         f->ic1 = f->ic2 = 0;
         return;
     }
-    if (!pt.g[G_FMODE]) {
+    if (pt.g[G_FMODE] == FM_LADDER) {
         for (i = 0; i < n; i++)
             x[i] = lad_run(&f->lad, (x[i] * dr) >> 12, 0);
         f->ic1 = f->ic2 = 0;
+        return;
+    }
+    if (pt.g[G_FMODE] == FM_DIST) {
+        int32_t lp = f->ic1, b = f == &flt[0] ? 3000 : -2600;   /* (the sides' bias apart: stereo) */
+        for (i = 0; i < n; i++) {
+            int32_t y = sat(((x[i] * dr) >> 12) + b) - sat(b);
+            lp += ((y - lp) * a1) >> 15;
+            x[i] = (lp * 3) >> 2;
+        }
+        f->ic1 = lp;
         return;
     }
     for (i = 0; i < n; i++) {
@@ -64,7 +80,7 @@ static void flt_run(flt_t *f, int32_t *x, uint32_t n)
         v2 = ic2 + (int32_t)(((int64_t)a2 * ic1 + (int64_t)a3 * v3) >> 16);
         ic1 = clip_soft(2 * v1 - ic1, 16000);              /* the band state clipped: growl, no blow-up */
         ic2 = 2 * v2 - ic2;
-        x[i] = (v2 * f->out) >> 15;
+        x[i] = ((pt.g[G_FMODE] == FM_BAND ? (v1 * 3) >> 1 : v2) * f->out) >> 15;   /* BAND: the band-pass */
     }
     f->ic1 = ic1, f->ic2 = ic2;
 }
@@ -254,6 +270,36 @@ static int32_t spring(fx_t *f, int16_t *ln, int32_t xin, int32_t X, int32_t Y, i
     return (t0 + (((t1 - t0) * fr) >> 8)) * 4 + ln[(wp - (uint32_t)L3) & 4095u] * 2;
 }
 
+/* RESO: four tuned combs (root, fifth, octave, two octaves of the tuning's root + Z semitones), damped:
+ * the drones ring in them. X decay, Y brightness, Z tuning. */
+static int32_t reso(fx_t *f, int16_t *m, int32_t x, int32_t X, int32_t Y, int32_t Z, uint32_t side)
+{
+    static const int16_t IV[4] = {0, 700, 1200, 2400};
+    int32_t fb = 24000 + X * 66, damp = 6000 + Y * 210, out = 0, c;
+    uint32_t k;
+    if ((f->w & 255u) == 0u || !f->pv[0])           /* the lengths (now and then: the root may change) */
+        for (k = 0; k < 4u; k++) {
+            int32_t cents = 3600 + pt.g[G_ROOT] * 100 + IV[k] + (Z - 64) * 100 + (int32_t)side * 7;
+            uint32_t inc = cents_inc(cents);
+            f->pv[k] = (int32_t)(0xFFFFFFFFu / (inc ? inc : 1u));   /* samples a period */
+            if (f->pv[k] > 12000)
+                f->pv[k] = 12000;
+            if (f->pv[k] < 20)
+                f->pv[k] = 20;
+        }
+    for (k = 0; k < 4u; k++) {
+        uint32_t base = k * 12288u, len = (uint32_t)f->pv[k], pos;
+        if (++f->ri[k] >= len)
+            f->ri[k] = 0;
+        pos = base + f->ri[k];
+        c = m[pos];
+        f->lp[k] += ((c - f->lp[k]) * damp) >> 15;
+        m[pos] = s16((x >> 2) + ((f->lp[k] * fb) >> 15));
+        out += c;
+    }
+    return out >> 1;
+}
+
 static int32_t fx_sample(fx_t *f, int16_t *m, int32_t x, uint32_t side)
 {
     const int16_t *g = &pt.g[side ? G_FXRX : G_FXLX];
@@ -273,6 +319,9 @@ static int32_t fx_sample(fx_t *f, int16_t *m, int32_t x, uint32_t side)
     case FX_SPRING:
         y = spring(f, m, x, X, Y, Z);
         break;
+    case FX_RESO:
+        y = reso(f, m, x, X, Y, Z, side);
+        break;
     case FX_REVERB:                        /* X decay, Y tone, Z pre-delay */
         y = reverb(f, m, x, 22000 + X * 83, (127 - Y) * 200, 1u + (uint32_t)Z * 80u, side);
         break;
@@ -290,7 +339,7 @@ static int32_t fx_sample(fx_t *f, int16_t *m, int32_t x, uint32_t side)
         f->dly = f->dly ? f->dly + ((tgt - f->dly) >> 11) : tgt;   /* (slews: tape-like) */
         y = rdi(m, ((w & FXM) << 8) - (uint32_t)f->dly);
         f->lp[0] = y + (((f->lp[0] - y) * (127 - Z) * 220) >> 15);
-        m[w & FXM] = s16(x + ((f->lp[0] * Y * 250) >> 15));
+        m[w & FXM] = s16(sat(x + ((f->lp[0] * Y * 250) >> 15)));   /* (the feedback saturates: it sings) */
         break;
     }
     case FX_CHORUS: {                      /* X rate, Y depth, Z feedback */
