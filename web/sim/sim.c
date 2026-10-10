@@ -90,8 +90,10 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 #include "../../firmware/src/synth.c"
 #include "../../firmware/src/analog.c"
 #include "../../firmware/src/fx.c"
+#include "../../firmware/src/keys.c"
 #include "../../firmware/src/mix.c"
 #include "../../firmware/src/params.c"
+#include "../../firmware/src/presets.c"
 
 /* ---- scenes in RAM (this session) ---- */
 #define NSCENE 8u

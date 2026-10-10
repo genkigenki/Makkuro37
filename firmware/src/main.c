@@ -104,9 +104,7 @@ static void mk_main(void)
     fm1_input_init();
     if (flash_ok)                               /* the factory key / pad velocity curves (read only) */
         smk_trim_load(fm1_xip_ptr(SMK_TRIM_FLASH));
-    patch_init(&pt);
-    if (settings.boot_scene && scene_load(settings.boot_scene - 1u) == 0)
-        settings.scene = settings.boot_scene;
+    preset_make(0, &pt);                        /* (silent until a preset is picked: the PRESETS screen) */
     ui_init();
     audio_init();
     usb_cdc_on = settings.console;              /* before USB starts: the host sees one device */

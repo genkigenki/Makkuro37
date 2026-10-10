@@ -1,51 +1,55 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
-/* Controls: pads (gates), keys (voices 4 + 5), knobs, faders, buttons, wheels -> the patch.
- * Pages show 4 values at a time on K5..K8; the page's button again (or K2) turns to the next four. */
-enum { PG_VOICE, PG_MUTEMOD, PG_ENV, PG_MIX, PG_TUNING, PG_LFO, PG_SEQ, PG_FILTER, PG_FX, PG_SCENES, PG_N };
-static const char *const PAGE_NAME[PG_N] = {"VOICE", "MUTE/MOD", "ENV", "MIX", "TUNING", "LFO", "SEQ", "FILTER",
-                                             "FX", "SCENES"};
+/* Controls. The screen is laid out as the panel: K1..K8 above the 8 pad columns, so column i is voice i
+ * everywhere. Main screen: Ki = voice i's pitch, top pad i its gate. Every button opens one menu; a menu's
+ * pages (< >) show 8 values in the 8 columns, the knob above each sets it. Dialogs: green pad OK, red pad
+ * CANCEL. */
+enum { MN_HOME, MN_VOICE, MN_ENV, MN_MOD, MN_MIX, MN_VOLUME, MN_TUNING, MN_LFO, MN_SEQ, MN_FX, MN_KEYS,
+       MN_PRESETS, MN_SETUP, MN_N };
+static const char *const MENU_NAME[MN_N] = {"", "VOICE", "ENV", "MOD", "MIX", "VOLUME", "TUNING", "LFO", "SEQ",
+                                            "FX", "KEYS", "PRESETS", "SETUP"};
 /* button ids (smk_input.h) */
 enum { B_KNOBBANK, B_FADERBANK, B_LEFT, B_RIGHT, B_OCTDN, B_OCTUP, B_ARP, B_REPEAT, B_SCALE, B_CHORD, B_GLOBE,
        B_BT, B_PATCH, B_PARA, B_FX, B_SEQ, B_PLAY, B_REC };
-static const int8_t BTN_PAGE[18] = {-1, -1, -1, -1, -1, -1, PG_VOICE, PG_MUTEMOD, PG_TUNING, PG_ENV, PG_MIX,
-                                    PG_VOICE, PG_SCENES, PG_VOICE, PG_FX, PG_SEQ, -1, PG_LFO};
+static const int8_t BTN_MENU[18] = {-1, MN_VOLUME, -1, -1, -1, -1, MN_KEYS, MN_MOD, MN_TUNING, MN_ENV, MN_MIX,
+                                    MN_LFO, MN_PRESETS, MN_VOICE, MN_FX, MN_SEQ, -1, -1};
 
-enum { IK_NONE, IK_V, IK_VBIT, IK_G, IK_GBIT, IK_SET, IK_ACT };
-typedef struct { uint8_t kind, id, bit; } item_t;
-#define MAXIT 16u
-enum { ACT_SLOT, ACT_LOAD, ACT_SAVE, ACT_MORPH, ACT_INIT };
-enum { SET_BRIGHT, SET_CONSOLE, SET_BOOT, SET_N };
+enum { IK_NONE, IK_V, IK_G, IK_SET, IK_LOAD, IK_SAVE, IK_MORPH, IK_STEPREC };
+typedef struct { uint8_t kind, id, voice; } item_t;
+enum { SET_BRIGHT, SET_CONSOLE, SET_N };
+enum { DLG_NONE, DLG_LOAD, DLG_SAVE, DLG_PRESET };
+enum { MO_IDLE, MO_REC, MO_LOOP, MO_STOP };
+#define MO_N 512u
 
 static struct {
-    uint8_t page, sub, voice, fbank, settings;
+    uint8_t menu, page, preset, pre_sel;   /* preset: the one chosen; pre_sel: the one shown on PRESETS */
     int8_t oct;
-    uint8_t slot;                          /* SCENES: the slot (0..7) */
-    uint8_t arm;                           /* SCENES: action armed (ACT_ + 1), turn again to do it */
-    uint32_t arm_until;
-    item_t it[MAXIT];
-    uint8_t nit;
+    item_t it[8];
+    char page_name[16];
     uint32_t enc_t[FM1_NENC];
     char msg[28];
     uint32_t msg_until;
-    uint8_t dirty;                         /* the page area needs a redraw */
+    uint8_t dirty;
     uint8_t latched[NV], ignore_rel[NV], pad_gate[NV];
     uint32_t t_press[NV];
-    uint64_t keys;                         /* keybed state seen last */
-    uint8_t keyq[8], nkeys;                /* held keys, oldest first */
+    uint64_t keys;
     uint8_t fad_last[4];
-    uint32_t patch_down;                   /* PATCH held since (ms), 0 = up */
-    uint32_t btn_t[FM1_NBTN];              /* page buttons: pressed at (ms | 1), 0 = up or used */
-    uint32_t tap_t;                        /* PULSER pad: last tap */
-    uint8_t fx_off;                        /* bit 0 / 1: effector L / R off (pads 15, 16) */
-    uint8_t morph, morph_on;               /* SCENES: MORPH 0..127 from the sound as it was to the slot */
-    uint8_t help, help_panel;              /* KNOB BANK held: the help panels */
-    uint32_t knob_down, help_t, intro_until;   /* (ms) KNOB BANK pressed, panel shown, page intro until */
+    uint32_t btn_t[FM1_NBTN];              /* buttons held since (ms | 1), 0 = up */
+    uint8_t help, help_panel;
+    uint32_t help_t;
+    uint32_t tap_t;
+    uint8_t dlg, dlg_arg;                  /* a dialog waiting for the green or red pad */
+    uint8_t chaos_held, chaos_used;
+    uint8_t morph_on, morph_slot, morph[NSCENE];
+    uint8_t focus;                         /* the voice touched last (VOICE opens on it) */
+    struct { uint8_t state; uint16_t n, i; uint32_t t0, len, last; } mo;   /* the motion loop */
 } ui;
+static struct { uint16_t t; uint8_t kind, a, c; int16_t b; } mo_ev[MO_N];   /* t in 10 ms */
+enum { EV_GATE_ON = 1, EV_GATE_OFF, EV_V, EV_G };
 
 static void keys_poll(void);
 static void midi_poll(void);
-static void big_show(uint32_t k, const char *label, const char *val);
+static void big_show(uint32_t col, const char *label, const char *val);
 
 static void ui_say(const char *a, const char *b)
 {
@@ -58,110 +62,161 @@ static void ui_say(const char *a, const char *b)
     ui.dirty = 1;
 }
 
-/* ------------------------------------------------------------ the pages --- */
-static void it_add(uint8_t kind, uint8_t id, uint8_t bit)
+/* ------------------------------------------------------------- motion loop --- */
+static void mo_add(uint32_t kind, uint32_t a, uint32_t c, int32_t b)
 {
-    if (ui.nit < MAXIT) {
-        ui.it[ui.nit].kind = kind;
-        ui.it[ui.nit].id = id;
-        ui.it[ui.nit].bit = bit;
-        ui.nit++;
-    }
-}
-static void it_v(uint8_t id) { it_add(IK_V, id, 0); }
-static void it_g(uint8_t id) { it_add(IK_G, id, 0); }
-
-static void page_build(void)
-{
-    uint32_t t = VTYPE[ui.voice], k;
-    ui.nit = 0;
-    if (ui.settings) {
-        for (k = 0; k < SET_N; k++)
-            it_add(IK_SET, (uint8_t)k, 0);
+    if (ui.mo.state != MO_REC || ui.mo.n >= MO_N)
         return;
-    }
-    switch (ui.page) {
-    case PG_VOICE:
-        if (t == VT_CLASSIC) {
-            for (k = 0; k < 6u; k++)
-                it_v((uint8_t)(CL_TUNE1 + k));
-        } else if (t == VT_NOISE) {
-            for (k = 0; k < 8u; k++)
-                it_v((uint8_t)(NZ_PITCH + k));
-        } else {
-            it_v(VC_WAVE), it_v(VC_SHAPE), it_v(VC_OCT), it_v(VC_TUNE), it_v(VC_FM);
-            if (ui.voice == 4u)
-                it_v(VC_SYNC);
-        }
-        break;
-    case PG_MUTEMOD:
-        if (t == VT_CLASSIC) {
-            for (k = 0; k < 5u; k++)
-                it_add(IK_VBIT, CL_MUTE, (uint8_t)k);
-            for (k = 0; k < 5u; k++)
-                it_add(IK_VBIT, CL_MOD, (uint8_t)k);
-        } else if (t == VT_NOISE) {
-            it_v(NZ_SHAMT), it_v(NZ_SHCLK);
-        }
-        it_v(VP_MSRC), it_v(VP_MAMT);
-        break;
-    case PG_ENV:
-        it_v(VP_ATT);
-        if (t == VT_VCO)
-            it_v(VC_DEC), it_v(VC_SUS);
-        it_v(VP_RLS);
-        if (t == VT_VCO)
-            it_v(VC_EG);
-        it_v(VP_GSRC);
-        break;
-    case PG_MIX:
-        it_v(VP_VOL), it_v(VP_PAN), it_v(VP_TONE), it_g(G_MASTER), it_g(G_BLEND), it_g(G_DRIFT), it_g(G_WIDTH);
-        break;
-    case PG_TUNING:
-        it_g(G_TSET), it_g(G_ROOT), it_g(G_SNAP), it_g(G_FINE), it_g(G_GLIDE), it_g(G_KEYS);
-        break;
-    case PG_LFO:
-        for (k = G_LARATE; k <= G_JYOFS; k++)
-            it_g((uint8_t)k);
-        break;
-    case PG_SEQ:
-        for (k = G_SEQ1; k <= G_SEQ5; k++)
-            it_g((uint8_t)k);
-        it_g(G_STAGES), it_g(G_PULSER), it_g(G_RUN);
-        break;
-    case PG_FILTER:
-        it_g(G_FFL), it_g(G_FRL), it_g(G_FFR), it_g(G_FRR), it_g(G_FMODE), it_g(G_FLINK), it_g(G_FDRIVE);
-        it_add(IK_NONE, 0, 0);
-        it_g(G_FCVSRC), it_g(G_FCVAMT);
-        break;
-    case PG_FX:
-        it_g(G_FXL), it_g(G_FXR), it_g(G_BLEND), it_add(IK_NONE, 0, 0);
-        for (k = G_FXLX; k <= G_FXRZ; k++) {
-            it_g((uint8_t)k);
-            if (k == G_FXLZ || k == G_FXRZ)
-                it_add(IK_NONE, 0, 0);
-        }
-        break;
-    case PG_SCENES:
-        for (k = 0; k < 5u; k++)
-            it_add(IK_ACT, (uint8_t)k, 0);
-        break;
-    }
-    if (ui.sub * 4u >= ui.nit)
-        ui.sub = 0;
+    mo_ev[ui.mo.n].t = (uint16_t)((fm1_ms - ui.mo.t0) / 10u);
+    mo_ev[ui.mo.n].kind = (uint8_t)kind, mo_ev[ui.mo.n].a = (uint8_t)a, mo_ev[ui.mo.n].c = (uint8_t)c;
+    mo_ev[ui.mo.n].b = (int16_t)b;
+    ui.mo.n++;
 }
-static uint32_t page_subs(void) { return ui.nit ? (ui.nit + 3u) / 4u : 1u; }
+
+/* ------------------------------------------------------------- the menus --- */
+static void it_set(uint32_t k, uint32_t kind, uint32_t id, uint32_t voice)
+{
+    ui.it[k].kind = (uint8_t)kind, ui.it[k].id = (uint8_t)id, ui.it[k].voice = (uint8_t)voice;
+}
+static void row_v(uint32_t id)                          /* one parameter of all 8 voices */
+{
+    uint32_t v;
+    for (v = 0; v < NV; v++)
+        it_set(v, VDESC[VTYPE[v]][id].label ? IK_V : IK_NONE, id, v);
+}
+static void row_g(const uint8_t *ids)                   /* 8 global parameters (0xFF: none) */
+{
+    uint32_t k;
+    for (k = 0; k < 8u; k++)
+        it_set(k, ids[k] == 0xFF ? IK_NONE : IK_G, ids[k], 0);
+}
+
+/* the menu's page into ui.it / ui.page_name; returns the number of pages */
+static uint32_t menu_build(void)
+{
+    static const uint8_t TUN[8] = {G_TSET, G_ROOT, G_SNAP, G_FINE, G_GLIDE, 0xFF, 0xFF, 0xFF};
+    static const uint8_t LFO[8] = {G_LARATE, G_LAWAVE, G_LBRATE, G_LBWAVE, G_JXOFS, G_JYOFS, G_DRIFT, 0xFF};
+    static const uint8_t SEQ[8] = {G_SEQ1, G_SEQ2, G_SEQ3, G_SEQ4, G_SEQ5, G_STAGES, G_PULSER, G_RUN};
+    static const uint8_t FLT[8] = {G_FFL, G_FRL, G_FFR, G_FRR, G_FMODE, G_FLINK, G_FDRIVE, G_FCVAMT};
+    static const uint8_t FXS[8] = {G_FXL, G_FXLX, G_FXLY, G_FXLZ, G_FXR, G_FXRX, G_FXRY, G_FXRZ};
+    static const uint8_t FX3[8] = {G_BLEND, G_BLENDR, G_FCVSRC, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    static const uint8_t MIX[8] = {G_MASTER, G_DRIFT, G_WIDTH, G_BLEND, G_BLENDR, 0xFF, 0xFF, 0xFF};
+    static const uint8_t KEY[8] = {G_KEYS, G_ARP, G_ARATE, G_AOCT, G_ALATCH, G_GLIDE, G_VIBD, G_VIBR};
+    uint32_t n = 1, k, p = ui.page, v;
+    const char *name = MENU_NAME[ui.menu];
+    for (k = 0; k < 8u; k++)
+        it_set(k, IK_NONE, 0, 0);
+    switch (ui.menu) {
+    case MN_VOICE:                                      /* a page a voice: its own eight */
+        n = NV;
+        v = p % NV;
+        if (VTYPE[v] == VT_CLASSIC)
+            for (k = 0; k < 8u; k++)
+                it_set(k, IK_V, CL_TUNE1 + k, v);
+        else if (VTYPE[v] == VT_NOISE)
+            for (k = 0; k < 8u; k++)
+                it_set(k, IK_V, NZ_PITCH + k, v);
+        else {
+            static const uint8_t VC[8] = {VC_WAVE, VC_SHAPE, VC_OCT, VC_TUNE, VC_FM, VC_SYNC, VC_EG, VP_TONE};
+            for (k = 0; k < 8u; k++)
+                it_set(k, (k == 5u && v == 3u) ? IK_NONE : IK_V, VC[k], v);
+        }
+        {
+            static char nm[2];
+            nm[0] = (char)('1' + v);
+            name = nm;
+        }
+        break;
+    case MN_ENV: {
+        static const char *const N[5] = {"ATTACK", "RELEASE", "GATE", "DECAY", "SUSTAIN"};
+        static const uint8_t ID[5] = {VP_ATT, VP_RLS, VP_GSRC, VC_DEC, VC_SUS};
+        n = 6;
+        if (p < 5u) {
+            if (p < 3u)
+                row_v(ID[p]);
+            else
+                it_set(3, IK_V, ID[p], 3), it_set(4, IK_V, ID[p], 4);
+            name = N[p];
+        } else {
+            it_set(3, IK_V, VC_EG, 3), it_set(4, IK_V, VC_EG, 4);
+            name = "VCO EG";
+        }
+        break;
+    }
+    case MN_MOD:
+        n = 4;
+        if (p < 2u)
+            row_v(p ? VP_MAMT : VP_MSRC), name = p ? "MOD AMT" : "MOD SRC";
+        else
+            it_set(2, IK_V, p == 2u ? NZ_SHAMT : NZ_SHCLK, 2), it_set(7, IK_V, p == 2u ? NZ_SHAMT : NZ_SHCLK, 7),
+            name = p == 2u ? "S&H AMT" : "S&H CLK";
+        break;
+    case MN_MIX:
+        n = 3;
+        if (p < 2u)
+            row_v(p ? VP_TONE : VP_PAN), name = p ? "TONE" : "PAN";
+        else
+            row_g(MIX), name = "MASTER";
+        break;
+    case MN_VOLUME:
+        row_v(VP_VOL);
+        name = "VOLUME";
+        break;
+    case MN_TUNING:
+        n = 2;
+        if (p)
+            row_v(VP_PITCH), name = "PITCH";
+        else
+            row_g(TUN), name = "TUNING";
+        break;
+    case MN_LFO:
+        row_g(LFO);
+        name = "LFO A B";
+        break;
+    case MN_SEQ:
+        row_g(SEQ);
+        name = "STEPS";
+        break;
+    case MN_FX:
+        n = 3;
+        row_g(p == 0u ? FLT : p == 1u ? FXS : FX3);
+        name = p == 0u ? "FILTER" : p == 1u ? "FX L  R" : "BLEND";
+        break;
+    case MN_KEYS:
+        n = 2;
+        if (p)
+            it_set(0, IK_STEPREC, 0, 0), name = "STEP REC";
+        else
+            row_g(KEY), name = "KEYS";
+        break;
+    case MN_PRESETS:                                    /* 0: the presets; 1 LOAD, 2 SAVE, 3 MORPH: the 8 slots */
+        n = 4;
+        for (k = 0; p && k < NSCENE; k++)
+            it_set(k, p == 1u ? IK_LOAD : p == 2u ? IK_SAVE : IK_MORPH, 0, k);
+        name = p == 0u ? "PRESETS" : p == 1u ? "LOAD" : p == 2u ? "SAVE" : "MORPH";
+        break;
+    case MN_SETUP:
+        it_set(0, IK_SET, SET_BRIGHT, 0), it_set(1, IK_SET, SET_CONSOLE, 0);
+        name = "SETUP";
+        break;
+    default:
+        break;
+    }
+    if (ui.page >= n)
+        ui.page = 0;
+    str_cpy(ui.page_name, name, sizeof ui.page_name);
+    return n;
+}
 
 static const pdesc_t *it_desc(const item_t *it)
 {
-    static const pdesc_t BIT = {0, 0, 1, 0, F_ONOFF, 0};
-    static const pdesc_t SET[SET_N] = {{"LIGHT", 1, 8, 4, F_NUM, 0}, {"CONSOLE", 0, 1, 1, F_ONOFF, 0},
-                                       {"BOOT", 0, 8, 0, F_NUM, 0}};
+    static const pdesc_t SET[SET_N] = {{"LIGHT", 1, 8, 4, F_NUM, 0}, {"CONSOLE", 0, 1, 1, F_ONOFF, 0}};
+    static const pdesc_t SLOT = {"SLOT", 0, 127, 0, F_NUM, 0};
     switch (it->kind) {
-    case IK_V: return &VDESC[VTYPE[ui.voice]][it->id];
+    case IK_V: return &VDESC[VTYPE[it->voice]][it->id];
     case IK_G: return &GDESC[it->id];
-    case IK_VBIT: case IK_GBIT: return &BIT;
     case IK_SET: return &SET[it->id];
+    case IK_LOAD: case IK_SAVE: case IK_MORPH: case IK_STEPREC: return &SLOT;
     default: return 0;
     }
 }
@@ -169,54 +224,60 @@ static const pdesc_t *it_desc(const item_t *it)
 static int32_t it_get(const item_t *it)
 {
     switch (it->kind) {
-    case IK_V: return pt.v[ui.voice][it->id];
+    case IK_V: return pt.v[it->voice][it->id];
     case IK_G: return pt.g[it->id];
-    case IK_VBIT: return (pt.v[ui.voice][it->id] >> it->bit) & 1;
-    case IK_GBIT: return (pt.g[it->id] >> it->bit) & 1;
-    case IK_SET: return it->id == SET_BRIGHT ? settings.bright : it->id == SET_CONSOLE ? settings.console
-                                                                                         : settings.boot_scene;
-    case IK_ACT: return it->id == ACT_SLOT ? ui.slot : it->id == ACT_MORPH ? ui.morph : 0;
+    case IK_SET: return it->id == SET_BRIGHT ? settings.bright : settings.console;
+    case IK_MORPH: return ui.morph[it->voice];
+    case IK_LOAD: case IK_SAVE: return (scene_used >> it->voice) & 1u ? 127 : 0;
+    case IK_STEPREC: return kb.seqlen * 8;
     default: return 0;
     }
 }
 
 static void it_label(const item_t *it, char *b, uint32_t n)
 {
-    static const char *const ACT[5] = {"SLOT", "LOAD", "SAVE", "MORPH", "INIT"};
     const pdesc_t *d = it_desc(it);
-    if (it->kind == IK_VBIT) {
-        uint32_t k;
-        str_cpy(b, it->id == CL_MUTE ? "GEN " : "MOD ", n);
-        k = str_len(b);
-        if (k + 1u < n) {
-            b[k] = (char)('1' + it->bit);
-            b[k + 1u] = 0;
-        }
+    if (it->kind >= IK_LOAD && it->kind <= IK_MORPH) {
+        str_cpy(b, it->kind == IK_LOAD ? "LOAD " : it->kind == IK_SAVE ? "SAVE " : "MORPH ", n);
+        b[str_len(b) + 1u < n ? str_len(b) + 1u : 0] = 0;
+        b[str_len(b)] = (char)('1' + it->voice);
         return;
     }
-    if (it->kind == IK_ACT) {
-        str_cpy(b, ACT[it->id], n);
+    if (it->kind == IK_STEPREC) {
+        str_cpy(b, "STEP REC", n);
         return;
     }
     str_cpy(b, d ? d->label : "", n);
+}
+
+static void cents_text(char *b, uint32_t n, int32_t c)   /* cents above MIDI 0 -> "E3+12" */
+{
+    int32_t m = (c + 50) / 100, dc = c - m * 100;
+    char t[8];
+    str_cpy(b, NOTE_NAMES[((m % 12) + 12) % 12], n);
+    fmt_int(t, m / 12 - 1);
+    str_cpy(b + str_len(b), t, n - str_len(b));
+    if (dc) {
+        uint32_t k = str_len(b);
+        b[k] = dc > 0 ? '+' : '-';
+        fmt_int(b + k + 1u, dc > 0 ? dc : -dc);
+    }
 }
 
 static void it_text(const item_t *it, char *b, uint32_t n)
 {
     const pdesc_t *d = it_desc(it);
     int32_t v = it_get(it);
-    if (it->kind == IK_VBIT) {                              /* MUTE bits read as ON / OFF (generator sounding) */
-        str_cpy(b, it->id == CL_MUTE ? (v ? "OFF" : "ON") : (v ? "ON" : "OFF"), n);
+    if (it->kind == IK_LOAD || it->kind == IK_SAVE) {
+        str_cpy(b, v ? "USED" : "FREE", n);
         return;
     }
-    if (it->kind == IK_ACT) {
-        if (it->id == ACT_SLOT) {
-            b[0] = (char)('1' + ui.slot);
-            str_cpy(b + 1, (scene_used >> ui.slot) & 1u ? "" : " FREE", n - 1u);
-        } else if (it->id == ACT_MORPH)
-            fmt_int(b, ui.morph);
-        else
-            str_cpy(b, ui.arm == it->id + 1u ? "AGAIN" : ">", n);
+    if (it->kind == IK_MORPH || it->kind == IK_STEPREC) {
+        if (it->kind == IK_STEPREC) {
+            str_cpy(b, kb.rec ? "REC " : "", n);
+            fmt_int(b + str_len(b), kb.seqlen);
+        } else
+            fmt_int(b, v);
         return;
     }
     if (!d) {
@@ -231,26 +292,16 @@ static void it_text(const item_t *it, char *b, uint32_t n)
         str_cpy(b, v ? "ON" : "OFF", n);
         break;
     case F_PAN:
-        if (v == 64) {
+        if (v == 64)
             str_cpy(b, "C", n);
-        } else {
+        else {
             b[0] = v < 64 ? 'L' : 'R';
             fmt_int(b + 1, v < 64 ? 64 - v : v - 64);
         }
         break;
-    case F_TUNE: {                                          /* the generator's note and cents */
-        int32_t c = GEN_LO[it->id - CL_TUNE1] * 100 + v, m = (c + 50) / 100, dc = c - m * 100;
-        char t[8];
-        str_cpy(b, NOTE_NAMES[m % 12], n);
-        fmt_int(t, m / 12 - 1);
-        str_cpy(b + str_len(b), t, n - str_len(b));
-        if (dc) {
-            uint32_t k = str_len(b);
-            b[k] = dc > 0 ? '+' : '-';
-            fmt_int(b + k + 1u, dc > 0 ? dc : -dc);
-        }
+    case F_TUNE:
+        cents_text(b, n, GEN_LO[it->id - CL_TUNE1] * 100 + v);
         break;
-    }
     case F_CENTS:
     case F_SIGNED:
         if (v > 0) {
@@ -267,11 +318,17 @@ static void it_text(const item_t *it, char *b, uint32_t n)
         break;
     }
     default:
-        if (it->kind == IK_SET && it->id == SET_BOOT && !v)
-            str_cpy(b, "INIT", n);
-        else
-            fmt_int(b, v);
+        fmt_int(b, v);
     }
+}
+
+static int it_binary(const item_t *it)                   /* on / off or two choices: set on the pads */
+{
+    const pdesc_t *d;
+    if (it->kind != IK_V && it->kind != IK_G && it->kind != IK_SET)
+        return 0;
+    d = it_desc(it);
+    return d && (d->fmt == F_ONOFF || (d->fmt == F_ENUM && d->max - d->min == 1));
 }
 
 /* ------------------------------------------------------------- editing --- */
@@ -286,50 +343,46 @@ static int32_t accel(uint32_t e, int32_t s, int32_t span)
     return s;
 }
 
-static void scene_act(uint32_t a, int32_t s)
+static void autogate(void)                              /* a preset's voices start (VCOs: only by keys) */
 {
-    static const char *const NAME[5] = {"", "LOAD ", "SAVE ", "", "INIT"};
-    char d[2] = {(char)('1' + ui.slot), 0};
-    if (s <= 0)
-        return;
-    if (ui.arm != a + 1u || (int32_t)(fm1_ms - ui.arm_until) > 0) {
-        ui.arm = (uint8_t)(a + 1u);
-        ui.arm_until = fm1_ms + 2500u;
-        ui_say(NAME[a], a == ACT_INIT ? "? TURN AGAIN" : "? TURN AGAIN");
-        return;
+    uint32_t v, bits = (uint32_t)pt.g[G_AUTOGATE];
+    for (v = 0; v < NV; v++) {
+        uint32_t on = VTYPE[v] != VT_VCO && ((bits >> v) & 1u);
+        ui.latched[v] = ui.pad_gate[v] = (uint8_t)on;
+        ui.ignore_rel[v] = 0;
     }
-    ui.arm = 0;
-    if (a == ACT_LOAD) {
-        int rc = scene_load(ui.slot);
-        ui_say(rc ? "EMPTY " : "LOADED ", d);
-        if (!rc && settings.scene != ui.slot + 1u) {
-            settings.scene = (uint8_t)(ui.slot + 1u);
-        }
-    } else if (a == ACT_SAVE) {
-        int rc = scene_save(ui.slot);
-        ui_say(rc ? "SAVE FAILED " : "SAVED ", d);
-    } else {
-        patch_init(&pt);
-        ui_say("INIT SOUND", 0);
-    }
+    kb.padhold[0] = kb.padhold[1] = 0;
+}
+static void preset_load(uint32_t n)
+{
+    preset_make(n % NPRESET, &pt);
+    ui.preset = (uint8_t)(n % NPRESET);
+    pulser_inc = 0;
+    md.restart = 1;
+    autogate();
+    ui.morph_on = 0;
+    ui.dirty = 1;
 }
 
-/* MORPH: the sound as it was (A) into the slot's scene (B); numbers glide, switches flip half way */
+/* MORPH k: from the sound as it was (A) into scene k; numbers glide, switches flip half way */
 static patch_t morph_a, morph_b;
-static void morph_turn(int32_t s)
+static void morph_turn(uint32_t slot, int32_t s)
 {
     uint32_t v, k, m;
-    if (!ui.morph_on) {
-        if (scene_load_to(ui.slot, &morph_b)) {
+    if (!ui.morph_on || ui.morph_slot != slot) {
+        if (scene_load_to(slot, &morph_b)) {
             ui_say("EMPTY", 0);
             return;
         }
-        morph_a = pt;
-        ui.morph = 0;
+        if (!ui.morph_on)
+            morph_a = pt;
         ui.morph_on = 1;
+        ui.morph_slot = (uint8_t)slot;
+        for (k = 0; k < NSCENE; k++)
+            ui.morph[k] = 0;
     }
-    ui.morph = (uint8_t)clamp(ui.morph + s * 3, 0, 127);
-    m = ui.morph;
+    ui.morph[slot] = (uint8_t)clamp(ui.morph[slot] + s * 3, 0, 127);
+    m = ui.morph[slot];
     for (v = 0; v < NV; v++)
         for (k = 0; k < VP_N; k++) {
             const pdesc_t *d = &VDESC[VTYPE[v]][k];
@@ -345,65 +398,120 @@ static void morph_turn(int32_t s)
     }
 }
 
+static void dlg_open(uint32_t kind, uint32_t arg)
+{
+    ui.dlg = (uint8_t)kind;
+    ui.dlg_arg = (uint8_t)arg;
+    ui.dirty = 1;
+}
+
 static void it_turn(const item_t *it, uint32_t e, int32_t s)
 {
     const pdesc_t *d = it_desc(it);
     int32_t v;
     ui.dirty = 1;
     switch (it->kind) {
-    case IK_VBIT: {                                         /* right: GEN sounding / MOD on */
-        int16_t *p = &pt.v[ui.voice][it->id], m = (int16_t)(1 << it->bit);
-        if ((s > 0) == (it->id == CL_MOD))
-            *p |= m;
-        else
-            *p &= (int16_t)~m;
-        return;
-    }
     case IK_SET:
         if (it->id == SET_BRIGHT)
             settings.bright = (uint8_t)clamp(settings.bright + s, 1, 8);
-        else if (it->id == SET_CONSOLE)
+        else
             settings.console = s > 0;
-        else
-            settings.boot_scene = (uint8_t)clamp(settings.boot_scene + s, 0, NSCENE);
         return;
-    case IK_ACT:
-        if (it->id == ACT_SLOT) {
-            ui.slot = (uint8_t)clamp(ui.slot + s, 0, NSCENE - 1);
-            ui.arm = 0;
-            ui.morph_on = 0;
-        } else if (it->id == ACT_MORPH)
-            morph_turn(s);
+    case IK_LOAD:
+        if ((scene_used >> it->voice) & 1u)
+            dlg_open(DLG_LOAD, it->voice);
         else
-            scene_act(it->id, s);
+            ui_say("EMPTY", 0);
+        return;
+    case IK_SAVE:
+        dlg_open(DLG_SAVE, it->voice);
+        return;
+    case IK_MORPH:
+        morph_turn(it->voice, s);
+        return;
+    case IK_STEPREC:                                    /* right: record (anew), left: stop */
+        if (s > 0) {
+            kb.seqlen = 0;
+            kb.rec = 1;
+        } else
+            kb.rec = 0;
         return;
     case IK_V:
-        v = pt.v[ui.voice][it->id];
-        if (d->fmt == F_TUNE && pt.g[G_SNAP]) {             /* to the next note of the tuning set */
+        v = pt.v[it->voice][it->id];
+        if (d->fmt == F_TUNE && pt.g[G_SNAP]) {          /* to the next note of the tuning set */
             int32_t lo = GEN_LO[it->id - CL_TUNE1] * 100, c = lo + v, k;
             for (k = 0; k < (s > 0 ? s : -s); k++)
                 c = tun_next((uint32_t)pt.g[G_TSET], (uint32_t)pt.g[G_ROOT], c, s > 0 ? 1 : -1);
-            pt.v[ui.voice][it->id] = vp_clamp(ui.voice, it->id, c - lo);
-            return;
-        }
-        pt.v[ui.voice][it->id] = vp_clamp(ui.voice, it->id, v + accel(e, s, d->max - d->min));
+            v = vp_clamp(it->voice, it->id, c - lo);
+        } else
+            v = vp_clamp(it->voice, it->id, v + accel(e, s, d->max - d->min));
+        pt.v[it->voice][it->id] = (int16_t)v;
+        mo_add(EV_V, it->voice, it->id, v);
+        ui.morph_on = 0;
         return;
     case IK_G:
-        v = pt.g[it->id];
+        v = (int16_t)clamp(pt.g[it->id] + accel(e, s, d->max - d->min), d->min, d->max);
+        pt.g[it->id] = (int16_t)v;
         if (it->id == G_PULSER)
-            pulser_inc = 0;                                /* the knob takes over from the tapped tempo */
-        pt.g[it->id] = (int16_t)clamp(v + accel(e, s, d->max - d->min), d->min, d->max);
+            pulser_inc = 0;                             /* the knob takes over from the tapped tempo */
+        mo_add(EV_G, 0, it->id, v);
+        ui.morph_on = 0;
         return;
     }
+}
+
+/* ------------------------------------------------------------- main screen: Ki = pitch of voice i --- */
+static int32_t voice_base(uint32_t v)                   /* the pitch PITCH moves: lowest generator, tone, key */
+{
+    const int16_t *p = pt.v[v];
+    if (VTYPE[v] == VT_CLASSIC) {
+        uint32_t g;
+        for (g = 0; g < 5u; g++)
+            if (!((p[CL_MUTE] >> g) & 1))
+                return GEN_LO[g] * 100 + p[CL_TUNE1 + g];
+        return GEN_LO[0] * 100 + p[CL_TUNE1];
+    }
+    if (VTYPE[v] == VT_NOISE) {
+        int32_t lo = p[NZ_RANGE] ? 4800 : 1200, hi = p[NZ_RANGE] ? 10000 : 6000;
+        return lo + p[NZ_PITCH] * (hi - lo) / 127;
+    }
+    return kb.cents[v - 3u] + OCT_CENTS[p[VC_OCT] & 7] + p[VC_TUNE];
+}
+static void pitch_turn(uint32_t v, int32_t s)
+{
+    int32_t base = voice_base(v), c = base + pt.v[v][VP_PITCH], k;
+    char b[16], lb[8] = "VOICE ";
+    if (pt.g[G_SNAP])
+        for (k = 0; k < (s > 0 ? s : -s); k++)
+            c = tun_next((uint32_t)pt.g[G_TSET], (uint32_t)pt.g[G_ROOT], c, s > 0 ? 1 : -1);
+    else
+        c += accel(v, s, 2000) * 5;
+    pt.v[v][VP_PITCH] = vp_clamp(v, VP_PITCH, c - base);
+    mo_add(EV_V, v, VP_PITCH, pt.v[v][VP_PITCH]);
+    lb[6] = (char)('1' + v), lb[7] = 0;
+    cents_text(b, sizeof b, base + pt.v[v][VP_PITCH]);
+    big_show(v, lb, b);
+    ui.focus = (uint8_t)v;
 }
 
 /* ------------------------------------------------------------- gates --- */
 static void gate_press(uint32_t v)
 {
-    if (ui.latched[v]) {                   /* a tap on a held drone ends it */
+    ui.focus = (uint8_t)v;
+    if (VTYPE[v] == VT_VCO) {                           /* 4 / 5: hold the last key's note (keys only) */
+        if (!kb.played) {
+            ui_say("PLAY A KEY", 0);
+            return;
+        }
+        kb.padhold[v - 3u] ^= 1u;
+        return;
+    }
+    mo_add(EV_GATE_ON, v, 0, 0);
+    if (ui.latched[v]) {                                /* a tap on a held drone ends it */
         ui.latched[v] = 0;
         ui.pad_gate[v] = 0;
         ui.ignore_rel[v] = 1;
+        mo_add(EV_GATE_OFF, v, 0, 0);
         return;
     }
     ui.pad_gate[v] = 1;
@@ -411,22 +519,70 @@ static void gate_press(uint32_t v)
 }
 static void gate_release(uint32_t v)
 {
+    if (VTYPE[v] == VT_VCO)
+        return;
     if (ui.ignore_rel[v]) {
         ui.ignore_rel[v] = 0;
         return;
     }
     if (fm1_ms - ui.t_press[v] < 350u)
-        ui.latched[v] = 1;                 /* a tap: HOLD */
-    else
-        ui.pad_gate[v] = 0;                /* held: momentary */
+        ui.latched[v] = 1;                              /* a tap: HOLD */
+    else {
+        ui.pad_gate[v] = 0;                             /* held: momentary */
+        mo_add(EV_GATE_OFF, v, 0, 0);
+    }
 }
 
-/* the PULSER pad: a tap starts the sequencer, taps in a row set its tempo, held 0.6 s stops it */
+/* CHAOS (pad 16): the classic voices (or, pad 16 held + a top pad, that voice) re-rolled within the set */
+static void chaos(uint32_t v0, uint32_t v1)
+{
+    uint32_t v, g, set = (uint32_t)pt.g[G_TSET], root = (uint32_t)pt.g[G_ROOT];
+    static uint32_t seed = 0x2545F491u;
+    seed ^= fm1_ms;
+    for (v = v0; v < v1; v++) {
+        int16_t *p = pt.v[v];
+        if (VTYPE[v] == VT_CLASSIC)
+            for (g = 0; g < 5u; g++) {
+                int32_t lo = GEN_LO[g] * 100, span = (GEN_HI[g] - GEN_LO[g]) * 100;
+                int32_t c = tun_next(set, root, lo + (int32_t)(xorshift(&seed) % (uint32_t)span) - 1, 1);
+                p[CL_TUNE1 + g] = vp_clamp(v, CL_TUNE1 + g, c - lo);
+            }
+        else if (VTYPE[v] == VT_NOISE && v1 - v0 == 1u) {
+            p[NZ_PITCH] = (int16_t)(20 + xorshift(&seed) % 100u);
+            p[NZ_RATE] = (int16_t)(xorshift(&seed) % 110u);
+            p[NZ_FMAMT] = (int16_t)(xorshift(&seed) % 128u);
+            p[NZ_DIV] = (int16_t)(1 + xorshift(&seed) % 8u);
+            p[NZ_MODE] = (int16_t)(xorshift(&seed) % 4u);
+        } else if (VTYPE[v] == VT_VCO && v1 - v0 == 1u) {
+            p[VC_WAVE] = (int16_t)(xorshift(&seed) % 6u);
+            p[VC_SHAPE] = (int16_t)(xorshift(&seed) % 128u);
+        }
+    }
+    ui_say("CHAOS!", 0);
+}
+
+/* HOLD ALL (pad 15): everything sounding stays on; again: all off */
+static void hold_all(void)
+{
+    uint32_t v, any = 0;
+    for (v = 0; v < NV; v++)
+        any |= VTYPE[v] != VT_VCO && vs[v].stage && !ui.latched[v];
+    for (v = 0; v < NV; v++) {
+        uint32_t on = any && vs[v].stage && VTYPE[v] != VT_VCO;
+        ui.latched[v] = ui.pad_gate[v] = (uint8_t)on;
+        ui.ignore_rel[v] = 0;
+    }
+    if (!any)
+        kb.padhold[0] = kb.padhold[1] = 0;
+    ui_say(any ? "HOLD ALL" : "ALL OFF", 0);
+}
+
+/* the PULSER pad: a tap starts it, taps in a row set its tempo, held 0.6 s stops it */
 static void tap_press(void)
 {
     uint32_t dt = fm1_ms - ui.tap_t;
     if (pt.g[G_RUN] && dt >= 60u && dt <= 3000u) {
-        pulser_inc = 0xFFFFFFFFu / (dt * 1378u / 1000u);   /* one step per tap interval */
+        pulser_inc = 0xFFFFFFFFu / (dt * 1378u / 1000u);
         md.restart = 1;
         ui_say("TAP", 0);
     } else if (!pt.g[G_RUN]) {
@@ -437,36 +593,109 @@ static void tap_press(void)
     ui.dirty = 1;
 }
 
+static void dlg_answer(int ok)
+{
+    uint32_t a = ui.dlg_arg, kind = ui.dlg;
+    char d[2] = {(char)('1' + a), 0};
+    ui.dlg = DLG_NONE;
+    ui.dirty = 1;
+    if (!ok)
+        return;
+    if (kind == DLG_LOAD) {
+        int rc = scene_load(a);
+        ui_say(rc ? "EMPTY " : "LOADED ", d);
+        if (!rc)
+            settings.scene = (uint8_t)(a + 1u);
+    } else if (kind == DLG_SAVE) {
+        ui_say(scene_save(a) ? "SAVE FAILED " : "SAVED ", d);
+    } else if (kind == DLG_PRESET) {
+        preset_load(a);
+        ui.menu = MN_HOME;
+    }
+}
+
 static void pads_poll(void)
 {
     int32_t e;
     while ((e = smk_pad_take()) >= 0) {
         uint32_t pad = (uint32_t)e >> 8, vel = (uint32_t)e & 255u;
-        if (pad < 8u) {                    /* top row: the voices' gates */
-            if (vel) {
+        if (ui.dlg) {                                   /* a question: green OK (16), red CANCEL (9) */
+            if (vel && (pad == 15u || pad == 8u))
+                dlg_answer(pad == 15u);
+            continue;
+        }
+        if (ui.menu != MN_HOME && !(ui.menu == MN_PRESETS && ui.page == 0u) && it_binary(&ui.it[pad & 7u])) {
+            const item_t *it = &ui.it[pad & 7u];      /* on / off, two choices: the column's pads */
+            const pdesc_t *d = it_desc(it);
+            int32_t nv;
+            if (!vel)
+                continue;
+            if (d->fmt == F_ONOFF)
+                nv = pad < 8u ? !it_get(it) : it_get(it);
+            else
+                nv = pad < 8u ? d->min : d->max;
+            if (it->kind == IK_V)
+                pt.v[it->voice][it->id] = (int16_t)nv, mo_add(EV_V, it->voice, it->id, nv);
+            else if (it->kind == IK_G)
+                pt.g[it->id] = (int16_t)nv, mo_add(EV_G, 0, it->id, nv);
+            else if (it->id == SET_CONSOLE)
+                settings.console = (uint8_t)nv;
+            {
+                char lb[16], vb[16];
+                it_label(it, lb, sizeof lb);
+                it_text(it, vb, sizeof vb);
+                big_show(pad & 7u, lb, vb);
+            }
+            continue;
+        }
+        if (ui.menu == MN_PRESETS && ui.page == 0u) {   /* the preset picker: pads 1..14, 15 cancel, 16 OK */
+            if (!vel)
+                continue;
+            if (pad < NPRESET) {
+                ui.pre_sel = (uint8_t)pad;
+                preset_load(pad);                       /* (heard at once) */
+            } else if (pad == 15u || pad == 14u) {
+                ui.menu = MN_HOME;
+                ui.dirty = 1;
+            }
+            continue;
+        }
+        if (pad < 8u) {                                 /* top row: the voices' gates */
+            if (vel && ui.chaos_held) {
+                chaos(pad, pad + 1u);
+                ui.chaos_used = 1;
+            } else if (vel) {
                 gate_vel[pad] = (uint8_t)vel;
                 gate_press(pad);
             } else
                 gate_release(pad);
-        } else if (pad < 13u) {            /* 9..13: the sequencer's step gates */
+        } else if (pad < 13u) {                         /* 9..13: the sequencer's step gates */
             if (vel)
                 pt.g[G_SGATES] ^= (int16_t)(1 << (pad - 8u));
             ui.dirty = 1;
-        } else if (pad == 13u) {           /* 14: PULSER */
+        } else if (pad == 13u) {                        /* 14: PULSER */
             if (vel)
                 tap_press();
             else if (fm1_ms - ui.tap_t >= 600u)
                 pt.g[G_RUN] = 0;
-        } else if (vel) {                  /* 15, 16: effector L / R on */
-            ui.fx_off ^= (uint8_t)(1u << (pad - 14u));
-            ui.dirty = 1;
+        } else if (pad == 14u) {                        /* 15: HOLD ALL */
+            if (vel)
+                hold_all();
+        } else {                                        /* 16: CHAOS (held + a top pad: that voice) */
+            if (vel) {
+                ui.chaos_held = 1;
+                ui.chaos_used = 0;
+            } else {
+                if (!ui.chaos_used)
+                    chaos(0, NV);
+                ui.chaos_held = 0;
+            }
         }
     }
 }
 
 /* ------------------------------------------------------------- wheels --- */
-/* the pitch and mod wheels as the joystick, self-calibrating (SLOOP's smk_wheels): X springs back to
- * its centre (taken at power-on, followed while it rests), Y 0..32767, up = more */
+/* the pitch and mod wheels, self-calibrating (SLOOP's smk_wheels): X springs back (bend), Y 0..32767 */
 static void wheels_poll(void)
 {
     enum { DEAD = 12, SPAN0 = 80, MOD_LO = 485, MOD_HI = 615 };
@@ -501,295 +730,289 @@ static void wheels_poll(void)
     joy_y = mhi - m <= DEAD ? 0 : clamp((mhi - m - DEAD) * 32767 / (mhi - mlo - DEAD > 1 ? mhi - mlo - DEAD : 1), 0, 32767);
 }
 
-/* ------------------------------------------------------------- live actions --- */
-/* CHAOS (ARP held): the selected voice re-rolled within the tuning set */
-static void chaos(void)
-{
-    uint32_t v = ui.voice, g, set = (uint32_t)pt.g[G_TSET], root = (uint32_t)pt.g[G_ROOT];
-    int16_t *p = pt.v[v];
-    static uint32_t seed = 0x2545F491u;
-    seed ^= fm1_ms;
-    if (VTYPE[v] == VT_CLASSIC) {
-        for (g = 0; g < 5u; g++) {
-            int32_t lo = GEN_LO[g] * 100, span = (GEN_HI[g] - GEN_LO[g]) * 100;
-            int32_t c = tun_next(set, root, lo + (int32_t)(xorshift(&seed) % (uint32_t)span) - 1, 1);
-            p[CL_TUNE1 + g] = vp_clamp(v, CL_TUNE1 + g, c - lo);
-        }
-    } else if (VTYPE[v] == VT_NOISE) {
-        p[NZ_PITCH] = (int16_t)(20 + xorshift(&seed) % 100u);
-        p[NZ_RATE] = (int16_t)(xorshift(&seed) % 110u);
-        p[NZ_FMAMT] = (int16_t)(xorshift(&seed) % 128u);
-        p[NZ_DIV] = (int16_t)(1 + xorshift(&seed) % 8u);
-        p[NZ_MODE] = (int16_t)(xorshift(&seed) % 4u);
-    } else {
-        p[VC_WAVE] = (int16_t)(xorshift(&seed) % 6u);
-        p[VC_SHAPE] = (int16_t)(xorshift(&seed) % 128u);
-        p[VC_FM] = (int16_t)(xorshift(&seed) % 2u ? xorshift(&seed) % 70u : 0u);
-    }
-    ui_say("CHAOS!", 0);
-}
-
-/* HOLD ALL (CHORD held): everything sounding stays on; again: all off */
-static void hold_all(void)
-{
-    uint32_t v, any = 0;
-    for (v = 0; v < NV; v++)
-        any |= vs[v].stage && !ui.latched[v];
-    for (v = 0; v < NV; v++) {
-        uint32_t on = any && vs[v].stage;
-        ui.latched[v] = (uint8_t)on;
-        ui.pad_gate[v] = (uint8_t)on;
-        ui.ignore_rel[v] = 0;
-    }
-    ui_say(any ? "HOLD ALL" : "ALL OFF", 0);
-}
-
-/* ------------------------------------------------------------- faders --- */
+/* ------------------------------------------------------------- faders: the effects and the filter --- */
 static void faders_poll(void)
 {
-    static const uint8_t BANK[4][4] = {{0, 1, 2, 3}, {4, 5, 6, 7}, {G_FFL, G_FRL, G_FFR, G_FRR},
-                                       {G_BLEND, G_LARATE, G_LBRATE, G_MASTER}};
+    static const char *const NAME[4] = {"FX L", "FX R", "SPACE", "FILTER"};
     uint32_t i;
-    if (fm1_in.frames < 200u)              /* (the first readings settle) */
+    if (fm1_in.frames < 200u)
         return;
     for (i = 0; i < 4u; i++) {
         uint32_t v = fm1_in.fader[i];
+        char b[8];
         if (ui.fad_last[i] == 0xFF || v == ui.fad_last[i]) {   /* takes over once it moves */
             ui.fad_last[i] = (uint8_t)v;
             continue;
         }
         ui.fad_last[i] = (uint8_t)v;
-        if (ui.fbank < 2u)
-            pt.v[BANK[ui.fbank][i]][VP_VOL] = (int16_t)v;
+        if (i == 0u)
+            pt.g[G_BLEND] = (int16_t)v;
+        else if (i == 1u)
+            pt.g[G_BLENDR] = (int16_t)v;
+        else if (i == 2u)
+            pt.g[G_FXLX] = pt.g[G_FXRX] = (int16_t)v;   /* the reverbs' decay, the delays' time */
         else
-            pt.g[BANK[ui.fbank][i]] = (int16_t)v;
-        ui.dirty = 1;
+            pt.g[G_FFL] = pt.g[G_FFR] = (int16_t)v;     /* both filters (127: open) */
+        mo_add(EV_G, 0, i == 0u ? G_BLEND : i == 1u ? G_BLENDR : i == 2u ? G_FXLX : G_FFL, (int32_t)v);
+        fmt_int(b, (int32_t)v);
+        big_show(8, NAME[i], b);
     }
 }
 
 /* ------------------------------------------------------------- buttons --- */
-static void page_go(uint32_t pg)
+static void menu_go(uint32_t m)
 {
-    ui.intro_until = fm1_ms + 1500u;                   /* the page's four knobs, big, for a moment */
-    if (ui.settings) {
-        ui.settings = 0;
+    if (ui.menu == MN_SETUP && m != MN_SETUP)
         settings_save();
-    }
-    if (ui.page == pg)
-        ui.sub = (uint8_t)((ui.sub + 1u) % page_subs());
-    else {
-        ui.page = (uint8_t)pg;
-        ui.sub = 0;
-    }
-    ui.arm = 0;
+    if (ui.menu == m && m != MN_HOME)                   /* its button again: back home */
+        m = MN_HOME;
+    ui.menu = (uint8_t)m;
+    ui.page = m == MN_VOICE ? ui.focus : 0;
+    if (m == MN_PRESETS)
+        ui.pre_sel = ui.preset;
     ui.dirty = 1;
 }
-static void voice_sel(uint32_t v)
+
+static void mo_toggle(void)                             /* SEQ REC: record -> loop -> stop -> loop ... */
 {
-    ui.voice = (uint8_t)(v % NV);
-    ui.sub = 0;
-    ui.dirty = 1;
+    if (ui.mo.state == MO_IDLE || (ui.mo.state == MO_STOP && !ui.mo.n)) {
+        ui.mo.state = MO_REC;
+        ui.mo.n = 0;
+        ui.mo.t0 = fm1_ms;
+        ui_say("REC", 0);
+    } else if (ui.mo.state == MO_REC) {
+        ui.mo.len = fm1_ms - ui.mo.t0;
+        ui.mo.state = ui.mo.n && ui.mo.len >= 200u ? MO_LOOP : MO_IDLE;
+        ui.mo.t0 = fm1_ms;
+        ui.mo.i = 0;
+        ui.mo.last = 0;
+        ui_say(ui.mo.state == MO_LOOP ? "LOOP" : "NOTHING", 0);
+    } else if (ui.mo.state == MO_LOOP) {
+        ui.mo.state = MO_STOP;
+        ui_say("LOOP STOP", 0);
+    } else {
+        ui.mo.state = MO_LOOP;
+        ui.mo.t0 = fm1_ms;
+        ui.mo.i = 0;
+        ui.mo.last = 0;
+    }
+}
+static void mo_play(void)                               /* the loop's events as they come round */
+{
+    uint32_t now;
+    if (ui.mo.state != MO_LOOP || !ui.mo.len)
+        return;
+    now = (fm1_ms - ui.mo.t0) / 10u;
+    if (now * 10u >= ui.mo.len) {                       /* round again */
+        ui.mo.t0 += ui.mo.len;
+        ui.mo.i = 0;
+        now = (fm1_ms - ui.mo.t0) / 10u;
+    }
+    while (ui.mo.i < ui.mo.n && mo_ev[ui.mo.i].t <= now) {
+        const typeof(mo_ev[0]) *e = &mo_ev[ui.mo.i++];
+        if (e->kind == EV_GATE_ON)
+            ui.pad_gate[e->a] = 1, ui.latched[e->a] = 1;
+        else if (e->kind == EV_GATE_OFF)
+            ui.pad_gate[e->a] = 0, ui.latched[e->a] = 0;
+        else if (e->kind == EV_V)
+            pt.v[e->a][e->c] = vp_clamp(e->a, e->c, e->b);
+        else if (e->kind == EV_G)
+            pt.g[e->c] = (int16_t)clamp(e->b, GDESC[e->c].min, GDESC[e->c].max);
+        ui.dirty = 1;
+    }
 }
 
 static void buttons_poll(void)
 {
     uint32_t rel, pr = fm1_input_edges(&rel), b;
     for (b = 0; b < FM1_NBTN; b++) {
+        if ((pr >> b) & 1u)
+            ui.btn_t[b] = fm1_ms | 1u;
         if (!((pr >> b) & 1u))
             continue;
+        if (ui.help && b != B_KNOBBANK)
+            continue;
         switch (b) {
-        case B_FADERBANK:
-            ui.fbank = (uint8_t)((ui.fbank + 1u) & 3u);
-            ui.fad_last[0] = ui.fad_last[1] = ui.fad_last[2] = ui.fad_last[3] = 0xFF;
-            ui_say("FADERS ", ui.fbank == 0 ? "A: VOL 1-4" : ui.fbank == 1 ? "B: VOL 5-8"
-                              : ui.fbank == 2 ? "C: FILTER" : "D: FX LFO MST");
-            break;
         case B_LEFT:
-            voice_sel(ui.voice + NV - 1u);
+        case B_RIGHT: {
+            int32_t d = b == B_RIGHT ? 1 : -1;
+            if (ui.menu == MN_HOME)                     /* home: the next preset (asks) */
+                dlg_open(DLG_PRESET, (ui.preset + NPRESET + (uint32_t)d) % NPRESET);
+            else if (ui.menu == MN_PRESETS && ui.page == 0u)
+                ui.pre_sel = (uint8_t)((ui.pre_sel + NPRESET + (uint32_t)d) % NPRESET), preset_load(ui.pre_sel);
+            else {
+                uint32_t n = menu_build();
+                ui.page = (uint8_t)((ui.page + n + (uint32_t)d) % n);
+                if (ui.menu == MN_VOICE)
+                    ui.focus = ui.page;
+            }
+            ui.dirty = 1;
             break;
-        case B_RIGHT:
-            voice_sel(ui.voice + 1u);
-            break;
+        }
         case B_OCTDN:
             if (ui.oct > -3) ui.oct--;
-            ui.dirty = 1;
+            ui_say(ui.oct ? "TRANSPOSE " : "TRANSPOSE 0", ui.oct < 0 ? "-" : ui.oct ? "+" : 0);
             break;
         case B_OCTUP:
             if (ui.oct < 3) ui.oct++;
-            ui.dirty = 1;
+            ui_say(ui.oct ? "TRANSPOSE " : "TRANSPOSE 0", ui.oct < 0 ? "-" : ui.oct ? "+" : 0);
             break;
-        case B_BT:                         /* NOISE: voices 3 and 8 */
-            voice_sel(ui.voice == 2u ? 7u : 2u);
-            ui.page = PG_VOICE;
-            break;
-        case B_PARA:                       /* VCO: voices 4 and 5 */
-            voice_sel(ui.voice == 3u ? 4u : 3u);
-            ui.page = PG_VOICE;
-            break;
-        case B_PATCH:
-            ui.patch_down = fm1_ms | 1u;
-            break;
-        case B_KNOBBANK:                   /* tap: FILTER; held: HELP */
-            ui.knob_down = fm1_ms | 1u;
-            break;
-        case B_PLAY:
+        case B_PLAY:                                    /* the PULSER: sequencer and the keys' arpeggio */
             pt.g[G_RUN] = (int16_t)!pt.g[G_RUN];
-            ui.dirty = 1;
+            if (pt.g[G_RUN])
+                md.restart = 1;
+            ui_say(pt.g[G_RUN] ? "PULSER RUN" : "PULSER STOP", 0);
             break;
+        case B_REC:
+            break;                                      /* (on release: a tap; held: a new recording) */
+        case B_PATCH:
+        case B_KNOBBANK:
+            break;                                      /* (on release / hold) */
         default:
-            if (BTN_PAGE[b] >= 0)
-                page_go((uint32_t)BTN_PAGE[b]);
-            if (b == B_ARP || b == B_CHORD)
-                ui.btn_t[b] = fm1_ms | 1u;
+            if (BTN_MENU[b] >= 0)
+                menu_go((uint32_t)BTN_MENU[b]);
         }
     }
-    for (b = B_ARP; b <= B_CHORD; b += B_CHORD - B_ARP) {   /* held 0.6 s: ARP = CHAOS, CHORD = HOLD ALL */
-        if ((rel >> b) & 1u)
-            ui.btn_t[b] = 0;
-        if (ui.btn_t[b] && fm1_ms - ui.btn_t[b] >= 600u) {
-            ui.btn_t[b] = 0;
-            if (b == B_ARP)
-                chaos();
-            else
-                hold_all();
-        }
-    }
-    if ((rel >> B_KNOBBANK) & 1u && ui.knob_down) {
+    /* KNOB BANK: tap = home, held = HELP; PATCH: tap = PRESETS, held = SETUP; SEQ REC: tap = record / loop /
+     * stop, held = record anew */
+    if ((rel >> B_KNOBBANK) & 1u) {
         if (!ui.help)
-            page_go(PG_FILTER);
+            menu_go(MN_HOME);
         ui.help = 0;
-        ui.knob_down = 0;
         ui.dirty = 1;
     }
-    if (ui.knob_down && !ui.help && fm1_ms - ui.knob_down >= 500u) {
+    if (ui.btn_t[B_KNOBBANK] && !ui.help && (fm1_in.buttons >> B_KNOBBANK) & 1u && fm1_ms - ui.btn_t[B_KNOBBANK] >= 500u) {
         ui.help = 1;
         ui.help_panel = 0;
         ui.help_t = fm1_ms;
     }
-    if ((rel >> B_PATCH) & 1u && ui.patch_down) {           /* PATCH: tap = SCENES, held = settings */
-        if (ui.settings) {
-            ui.settings = 0;
-            settings_save();
-            ui.dirty = 1;
-        } else if (fm1_ms - ui.patch_down < 500u)
-            page_go(PG_SCENES);
-        ui.patch_down = 0;
+    if ((rel >> B_PATCH) & 1u && ui.btn_t[B_PATCH]) {
+        if (fm1_ms - ui.btn_t[B_PATCH] < 500u)
+            menu_go(MN_PRESETS);
+        ui.btn_t[B_PATCH] = 0;
     }
-    if (ui.patch_down && !ui.settings && fm1_ms - ui.patch_down >= 500u) {
-        ui.settings = 1;
-        ui.sub = 0;
-        ui.dirty = 1;
+    if (ui.btn_t[B_PATCH] && (fm1_in.buttons >> B_PATCH) & 1u && fm1_ms - ui.btn_t[B_PATCH] >= 500u) {
+        ui.btn_t[B_PATCH] = 0;
+        menu_go(MN_SETUP);
+    }
+    if ((rel >> B_REC) & 1u && ui.btn_t[B_REC]) {
+        mo_toggle();
+        ui.btn_t[B_REC] = 0;
+    }
+    if (ui.btn_t[B_REC] && (fm1_in.buttons >> B_REC) & 1u && fm1_ms - ui.btn_t[B_REC] >= 700u) {
+        ui.btn_t[B_REC] = 0;
+        ui.mo.state = MO_IDLE;
+        mo_toggle();                                    /* held: a new recording */
     }
 }
 
 /* ------------------------------------------------------------- knobs --- */
 static void knobs_poll(void)
 {
-    int32_t s;
     uint32_t k;
-    if ((s = fm1_enc_take(0)) != 0) {                       /* K1 master */
-        char b[8];
-        pt.g[G_MASTER] = (int16_t)clamp(pt.g[G_MASTER] + accel(0, s, 127) * 2, 0, 127);
-        fmt_int(b, pt.g[G_MASTER]);
-        big_show(9, "MASTER", b);
-        ui.dirty = 1;
-    }
-    if ((s = fm1_enc_take(1)) != 0 && ui.help) {            /* K2 in HELP: the next panel */
-        ui.help_panel = (uint8_t)(ui.help_panel + (s > 0 ? 1u : 5u)) % 6u;
-        ui.help_t = fm1_ms;
-        s = 0;
-    }
-    if (s != 0) {                                           /* K2 pages (and their fours) */
-        int32_t pos = ui.page * 8 + ui.sub;
-        ui.intro_until = fm1_ms + 1500u;
-        if (ui.settings)
-            ui.settings = 0, settings_save();
-        while (s) {
-            int32_t d = s > 0 ? 1 : -1;
-            page_build();
-            if (d > 0)
-                pos = ui.sub + 1u < page_subs() ? pos + 1 : ((ui.page + 1) % PG_N) * 8;
-            else if (ui.sub)
-                pos--;
-            else {
-                ui.page = (uint8_t)((ui.page + PG_N - 1u) % PG_N);
-                ui.sub = 0;
-                page_build();
-                pos = ui.page * 8 + (int32_t)page_subs() - 1;
-            }
-            ui.page = (uint8_t)(pos / 8);
-            ui.sub = (uint8_t)(pos % 8);
-            s -= d;
-        }
-        ui.arm = 0;
-        ui.dirty = 1;
-    }
-    if ((s = fm1_enc_take(2)) != 0)                         /* K3 voice */
-        voice_sel(ui.voice + (uint32_t)(s > 0 ? s : NV * 8 + s));
-    if ((s = fm1_enc_take(3)) != 0) {                       /* K4 tuning set */
-        pt.g[G_TSET] = (int16_t)clamp(pt.g[G_TSET] + s, 0, TS_N - 1);
-        big_show(9, "TUNING", TSETS[pt.g[G_TSET]].name);
-    }
-    page_build();
-    for (k = 0; k < 4u; k++) {
-        uint32_t i = ui.sub * 4u + k;
-        if ((s = fm1_enc_take(4u + k)) == 0)
+    int32_t s;
+    if (ui.menu != MN_HOME)
+        menu_build();
+    for (k = 0; k < 8u; k++) {
+        if ((s = fm1_enc_take(k)) == 0)
             continue;
-        if (i < ui.nit && ui.it[i].kind != IK_NONE)
-        {
+        if (ui.help) {                                  /* (HELP: any knob turns its panels) */
+            ui.help_panel = (uint8_t)((ui.help_panel + (s > 0 ? 1u : 5u)) % 6u);
+            ui.help_t = fm1_ms;
+            continue;
+        }
+        if (ui.dlg)
+            continue;
+        if (ui.menu == MN_HOME) {
+            pitch_turn(k, s);
+            continue;
+        }
+        if (ui.menu == MN_PRESETS && ui.page == 0u) {   /* any knob: through the presets */
+            ui.pre_sel = (uint8_t)((ui.pre_sel + NPRESET * 4u + (uint32_t)s) % NPRESET);
+            preset_load(ui.pre_sel);
+            continue;
+        }
+        if (ui.it[k].kind != IK_NONE && !it_binary(&ui.it[k])) {   /* (two choices: the pads) */
             char lb[16], vb[16];
-            it_turn(&ui.it[i], 4u + k, s);
-            if (ui.it[i].kind != IK_ACT || ui.it[i].id == ACT_SLOT || ui.it[i].id == ACT_MORPH) {
-                it_label(&ui.it[i], lb, sizeof lb);
-                it_text(&ui.it[i], vb, sizeof vb);
-                big_show(k, lb, vb);
-            }
-            if (ui.it[i].kind != IK_ACT)
-                ui.morph_on = 0;                           /* an edit: the next MORPH starts from here */
+            it_turn(&ui.it[k], k, s);
+            it_label(&ui.it[k], lb, sizeof lb);
+            it_text(&ui.it[k], vb, sizeof vb);
+            big_show(k, lb, vb);
         }
     }
 }
 
 /* ------------------------------------------------------------- LEDs --- */
-static const uint8_t VCOL[NV][3] = {{255, 46, 136}, {176, 76, 255}, {46, 230, 255}, {255, 176, 0},
-                                    {255, 106, 0}, {61, 123, 255}, {255, 79, 216}, {46, 255, 154}};
+/* eight distinct colours, one per column: the creature, its pad, its column in every menu */
+static const uint8_t VCOL[NV][3] = {{255, 64, 64}, {255, 150, 20}, {255, 230, 30}, {70, 230, 70},
+                                    {20, 220, 255}, {70, 120, 255}, {170, 90, 255}, {255, 90, 210}};
 static void ui_leds(void)
 {
-    uint32_t v, b, sc = 4u + settings.bright * 12u;         /* pad brightness of 256 */
+    uint32_t v, b, sc = 4u + settings.bright * 12u;     /* pad brightness of 256 */
+#define PAD(p, r, g, bl, k) padled_set(p, (uint8_t)((r) * (k) * sc >> 16), (uint8_t)((g) * (k) * sc >> 16), \
+                                       (uint8_t)((bl) * (k) * sc >> 16))
+    if (ui.dlg) {                                       /* a question: only red and green */
+        for (v = 0; v < 16u; v++)
+            padled_set(v, 0, 0, 0);
+        PAD(8, 255, 0, 0, 256);
+        PAD(15, 0, 255, 0, 256);
+        return;
+    }
+    if (ui.menu == MN_PRESETS && ui.page == 0u) {       /* the picker: 14 presets, red cancel, green OK */
+        for (v = 0; v < NPRESET; v++) {
+            const uint8_t *c = VCOL[v & 7u];
+            PAD(v, c[0], c[1], c[2], v == ui.pre_sel ? 256 : 30);
+        }
+        PAD(14, 255, 0, 0, 256);
+        PAD(15, 0, 255, 0, 256);
+        return;
+    }
     for (v = 0; v < NV; v++) {
         int32_t l = vs[v].level, k = vs[v].stage ? 120 + (l >> 8) : 10;   /* idle: a dim glow; sounding: bright */
+        if (VTYPE[v] == VT_VCO && kb.padhold[v - 3u])
+            k = k < 160 ? 160 : k;
         k = k > 256 ? 256 : k;
-        padled_set(v, (uint8_t)(VCOL[v][0] * k * sc >> 16), (uint8_t)(VCOL[v][1] * k * sc >> 16),
-                   (uint8_t)(VCOL[v][2] * k * sc >> 16));
+        PAD(v, VCOL[v][0], VCOL[v][1], VCOL[v][2], k);
     }
-    for (b = 0; b < 5u; b++) {                              /* 9..13: steps (lit: gate on, white: playhead) */
-        uint32_t on = (pt.g[G_SGATES] >> b) & 1, here = pt.g[G_RUN] && md.step == b, k = sc;
+    for (b = 0; b < 5u; b++) {                          /* 9..13: steps (lit: gate on, white: playhead) */
+        uint32_t on = (pt.g[G_SGATES] >> b) & 1, here = pt.g[G_RUN] && md.step == b;
         if (b >= 3u + (uint32_t)pt.g[G_STAGES])
             padled_set(8u + b, 0, 0, 0);
         else if (here)
-            padled_set(8u + b, (uint8_t)(200 * k >> 8), (uint8_t)(200 * k >> 8), (uint8_t)(220 * k >> 8));
+            PAD(8u + b, 220, 220, 240, 256);
         else
-            padled_set(8u + b, (uint8_t)((on ? 120 : 10) * k >> 8), (uint8_t)((on ? 20 : 4) * k >> 8),
-                       (uint8_t)((on ? 255 : 20) * k >> 8));
+            PAD(8u + b, on ? 120 : 10, on ? 20 : 4, on ? 255 : 20, 256);
     }
-    {   /* 14: the pulser's beat; 15, 16: effector L / R */
+    {   /* 14: the pulser's beat; 15 HOLD ALL (white); 16 CHAOS (a rainbow-ish pink) */
         uint32_t beat = pt.g[G_RUN] && md.pp < 0x40000000u;
-        padled_set(13, (uint8_t)((beat ? 255 : 30) * sc >> 8), (uint8_t)((beat ? 255 : 20) * sc >> 8), (uint8_t)(10 * sc >> 8));
-        for (b = 0; b < 2u; b++) {
-            uint32_t on = !((ui.fx_off >> b) & 1u) && pt.g[G_FXL + b];
-            padled_set(14u + b, (uint8_t)((on ? 40 : 6) * sc >> 8), (uint8_t)((on ? 255 : 20) * sc >> 8),
-                       (uint8_t)((on ? 200 : 16) * sc >> 8));
-        }
+        PAD(13, beat ? 255 : 30, beat ? 255 : 20, 10, 256);
+        PAD(14, 120, 120, 140, 256);
+        PAD(15, 255, 60, 200, ui.chaos_held ? 256 : 120);
     }
+    if (ui.menu != MN_HOME)                             /* a menu's two-choice columns: the choice lit */
+        for (v = 0; v < 8u; v++) {
+            const item_t *it = &ui.it[v];
+            const pdesc_t *d;
+            int on;
+            if (!it_binary(it))
+                continue;
+            d = it_desc(it);
+            on = d->fmt == F_ONOFF ? it_get(it) != 0 : it_get(it) == d->min;
+            PAD(v, VCOL[v][0], VCOL[v][1], VCOL[v][2], on ? 256 : 12);
+            if (d->fmt == F_ENUM)
+                PAD(8u + v, VCOL[v][0], VCOL[v][1], VCOL[v][2], on ? 12 : 256);
+            else
+                padled_set(8u + v, 0, 0, 0);
+        }
     for (b = 0; b < FM1_NBTN; b++)
-        fm1_led_key(b, BTN_PAGE[b] == (int8_t)ui.page && !ui.settings &&
-                           (b != B_BT || VTYPE[ui.voice] == VT_NOISE) && (b != B_PARA || VTYPE[ui.voice] == VT_VCO) &&
-                           (b != B_ARP || ui.page != PG_VOICE || VTYPE[ui.voice] == VT_CLASSIC));
-    fm1_led_key(B_FADERBANK, ui.fbank != 0);
-    fm1_led_key(B_PATCH, ui.settings || ui.page == PG_SCENES);
+        fm1_led_key(b, BTN_MENU[b] >= 0 && BTN_MENU[b] == (int8_t)ui.menu);
+    fm1_led_key(B_KNOBBANK, ui.help);
+    fm1_led_key(B_PATCH, ui.menu == MN_PRESETS || ui.menu == MN_SETUP);
     fm1_led_key(B_PLAY, pt.g[G_RUN] != 0);
+    fm1_led_key(B_REC, ui.mo.state == MO_REC ? (fm1_ms >> 8) & 1u : ui.mo.state == MO_LOOP);
     fm1_led_key(B_OCTDN, ui.oct < 0);
     fm1_led_key(B_OCTUP, ui.oct > 0);
+#undef PAD
 }
 
 static void ui_init(void)
@@ -797,8 +1020,10 @@ static void ui_init(void)
     uint32_t i;
     for (i = 0; i < 4u; i++)
         ui.fad_last[i] = 0xFF;
+    ui.menu = MN_PRESETS;                               /* power-on: pick a preset */
+    ui.page = 0;
+    ui.pre_sel = ui.preset;
     ui.dirty = 1;
-    page_build();
 }
 
 static void ui_input(void)
@@ -810,66 +1035,27 @@ static void ui_input(void)
     buttons_poll();
     knobs_poll();
     faders_poll();
+    mo_play();
     for (v = 0; v < NV; v++)
-        gate_in[v] = ui.pad_gate[v];
-    fx_mute = ui.fx_off;
-    if (ui.arm && (int32_t)(fm1_ms - ui.arm_until) > 0) {
-        ui.arm = 0;
-        ui.dirty = 1;
-    }
+        gate_in[v] = VTYPE[v] == VT_VCO ? 0 : ui.pad_gate[v];
 }
 
 /* ------------------------------------------------------------- keys --- */
-/* the keybed and USB MIDI notes play voices 4 + 5: the last two keys held (4 the lower, 5 the upper),
- * one key both (KEYS DUO); KEYS UNISON: the last key both. Tuned by the tuning set. */
-static struct { uint8_t id; int8_t k; } keyq[8];
-static uint32_t nkeyq;
-
-static int32_t key_to_cents(int32_t k)              /* k: semitone keys above C2 (degrees for non-12 sets) */
-{
-    uint32_t set = (uint32_t)pt.g[G_TSET], root = (uint32_t)pt.g[G_ROOT], n = TSETS[set % TS_N].n;
-    return n == 12u ? tun_key(set, root, 36 + k) : tun_degree(set, root, 3 * (int32_t)n + k);
-}
-
-static void key_event(uint32_t id, int32_t k, int on)
-{
-    uint32_t i, j;
-    for (i = j = 0; i < nkeyq; i++)                    /* (a key held again moves to the end) */
-        if (keyq[i].id != id)
-            keyq[j++] = keyq[i];
-    nkeyq = j;
-    if (on) {
-        if (nkeyq == 8u) {
-            for (i = 1; i < 8u; i++)
-                keyq[i - 1u] = keyq[i];
-            nkeyq--;
-        }
-        keyq[nkeyq].id = (uint8_t)id;
-        keyq[nkeyq].k = (int8_t)k;
-        nkeyq++;
-        key_trig++;
-    }
-}
-
-static void keys_update(void)                       /* every poll: follows the tuning set too */
-{
-    if (nkeyq) {
-        int32_t a = key_to_cents(keyq[nkeyq - 1u].k), b = nkeyq > 1u && !pt.g[G_KEYS] ? key_to_cents(keyq[nkeyq - 2u].k) : a;
-        key_cents[0] = a < b ? a : b;
-        key_cents[1] = a < b ? b : a;
-    }
-    key_gate = nkeyq != 0u;
-}
-
 static void keys_poll(void)
 {
     uint64_t now = fm1_in.keys, ch = now ^ ui.keys;
     uint32_t k;
     ui.keys = now;
+    if (fm1_in.frames < 100u)                           /* (the first readings settle) */
+        return;
     for (k = 0; ch && k < 37u; k++)
-        if ((ch >> k) & 1u)
-            key_event(k, (int32_t)k + 12 * ui.oct, (int)((now >> k) & 1u));
-    keys_update();
+        if ((ch >> k) & 1u) {
+            int32_t key = (int32_t)k + 12 * ui.oct;
+            if ((now >> k) & 1u)
+                kb_press(key, k >= 18u, fm1_in.key_vel[k]);
+            else
+                kb_release(key);
+        }
 }
 
 /* USB MIDI in: notes play voices 4 + 5 as the keys do */
@@ -882,8 +1068,9 @@ static void midi_poll(void)
         RING_PUBLISH();
         mi_r++;
         cin = pkt & 15u, n = (pkt >> 16) & 127u, vel = (pkt >> 24) & 127u;
-        if (cin == 9u || cin == 8u)
-            key_event(128u + n, (int32_t)n - 36, cin == 9u && vel);
+        if (cin == 9u && vel)
+            kb_press((int32_t)n - 36, n >= 54u, vel);
+        else if (cin == 8u || cin == 9u)
+            kb_release((int32_t)n - 36);
     }
-    keys_update();
 }

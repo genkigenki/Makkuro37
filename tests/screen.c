@@ -57,8 +57,10 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 #include "../firmware/src/synth.c"
 #include "../firmware/src/analog.c"
 #include "../firmware/src/fx.c"
+#include "../firmware/src/keys.c"
 #include "../firmware/src/mix.c"
 #include "../firmware/src/params.c"
+#include "../firmware/src/presets.c"
 /* scenes.c stand-ins */
 #define NSCENE 8u
 static uint8_t scene_used = 5;
@@ -67,19 +69,10 @@ static int scene_save(uint32_t n) { (void)n; return 0; }
 static int scene_load(uint32_t n) { (void)n; return 0; }
 static int scene_load_to(uint32_t n, patch_t *d) { (void)n; patch_init(d); d->g[G_FFL] = 40; return 0; }
 static void fm1_wdt_feed(void) {}
-static const char *shot_dir;
-static uint32_t boot_shot_at[3] = {500, 950, 1900}, boot_shots;
-static void shot(const char *dir, const char *name);
-static void fm1_delay_ms(uint32_t ms)
-{
-    fm1_ms += ms;
-    if (boot_shots < 3 && fm1_ms >= boot_shot_at[boot_shots]) {
-        char n[32];
-        snprintf(n, sizeof n, "boot_%u", boot_shots++);
-        shot(shot_dir, n);
-    }
-}
 static void settings_save(void) {}
+static const char *shot_dir;
+static void shot(const char *dir, const char *name);
+static void fm1_delay_ms(uint32_t ms) { fm1_ms += ms; }
 #include "../firmware/src/ui.c"
 #include "../firmware/src/draw.c"
 
@@ -102,90 +95,90 @@ static void shot(const char *dir, const char *name)
     printf("  screen %s\n", path);
 }
 
-/* run the engine for ms milliseconds with the gates as set, then draw */
+/* run the engine for ms milliseconds with the UI's gates, the main loop every 15 ms, then draw */
 static void run(uint32_t ms)
 {
     int32_t out[2 * CTL];
-    uint32_t b, nb = ms * 44100 / 1000 / CTL;
+    uint32_t b, nb = ms * 44100 / 1000 / CTL, acc = 0;
     for (b = 0; b < nb; b++) {
-        uint32_t v;
-        for (v = 0; v < NV; v++)
-            gate_in[v] = ui.pad_gate[v];
         synth_block(out, CTL);
-        if (b % 44 == 0) {
-            fm1_ms += 32;
-            draw_frame();
+        acc += 726;                                     /* (32 samples = 0.726 ms) */
+        while (acc >= 1000) {
+            acc -= 1000;
+            fm1_ms++;
+            if (fm1_ms % 15u == 0u) {
+                fm1_in.frames += 10;
+                ui_input();
+                ui_leds();
+                draw_frame();
+            }
         }
     }
-    ui.dirty = 1;
-    fm1_ms += 300;
-    draw_frame();
 }
 
-static void page(const char *dir, const char *name, uint32_t pg, uint32_t sub, uint32_t voice)
+static void page(const char *dir, const char *name, uint32_t menu, uint32_t pg)
 {
+    ui.menu = (uint8_t)menu;
     ui.page = (uint8_t)pg;
-    ui.sub = (uint8_t)sub;
-    ui.voice = (uint8_t)voice;
     big.until = 0;
-    run(200);
+    ui.msg_until = 0;
+    run(300);
     shot(dir, name);
 }
 
 int main(int argc, char **argv)
 {
     const char *dir = argc > 1 ? argv[1] : ".";
+    uint32_t t;
     shot_dir = dir;
     palette_set(2);
-    patch_init(&pt);
+    preset_make(0, &pt);
     ui_init();
-    boot_anim();
-    lcd_fill(0, 0, 240, 240, C_BG);
-    ui.pad_gate[0] = ui.latched[0] = 1;
-    ui.pad_gate[2] = ui.latched[2] = 1;
-    ui.pad_gate[5] = 1;
-    run(1200);
-    vs[5].hits++;                                   /* a bonk in progress on voice 6 */
-    ui.pad_gate[6] = 1;
-    run(110);
-    shot(dir, "screen_main");
-    pt.g[G_RUN] = 1;
-    page(dir, "page_voice_classic", PG_VOICE, 0, 0);
-    page(dir, "page_mutemod", PG_MUTEMOD, 1, 0);
-    page(dir, "page_voice_noise", PG_VOICE, 0, 2);
-    page(dir, "page_voice_vco", PG_VOICE, 0, 3);
-    page(dir, "page_env_vco", PG_ENV, 0, 3);
-    page(dir, "page_env", PG_ENV, 0, 0);
-    page(dir, "page_mix", PG_MIX, 0, 0);
-    page(dir, "page_tuning", PG_TUNING, 0, 0);
-    page(dir, "page_lfo", PG_LFO, 0, 0);
-    page(dir, "page_seq", PG_SEQ, 0, 0);
-    page(dir, "page_filter", PG_FILTER, 0, 0);
-    page(dir, "page_fx", PG_FX, 0, 0);
-    page(dir, "page_scenes", PG_SCENES, 0, 0);
-    ui.page = PG_VOICE, ui.sub = 0, ui.voice = 0;
-    page_build();
-    big_show(1, "TUNE 2", "G2+12");
-    run(100);
-    shot(dir, "overlay_value");
-    big.until = 0;
-    page_go(PG_ENV);
-    run(100);
-    shot(dir, "overlay_intro");
-    ui.intro_until = 0;
-    ui.help = 1;
-    {
-        uint32_t k;
-        for (k = 0; k < 6u; k++) {
-            char n[16];
-            ui.help_panel = (uint8_t)k;
-            ui.help_t = fm1_ms;
-            draw_frame();
-            snprintf(n, sizeof n, "help_%u", k);
-            shot(dir, n);
-            fm1_ms += 300;
-        }
+    fm1_in.frames = 400;
+    for (t = 0; t <= 2000u; t += 100u) {               /* the boot scene, frame by frame */
+        char n[32];
+        boot_frame(t);
+        snprintf(n, sizeof n, "boot_%04u", t);
+        shot(dir, n);
     }
-    ui.help = 0;
+    lcd_fill(0, 0, 240, 240, C_BG);
+    run(200);
+    shot(dir, "s01_presets");
+    ui.pre_sel = 1;
+    preset_load(1);
+    ui.menu = MN_HOME;
+    run(2500);
+    shot(dir, "s02_home");
+    pitch_turn(2, 3);
+    run(100);
+    shot(dir, "s03_home_pitch");
+    page(dir, "s04_voice1", MN_VOICE, 0);
+    page(dir, "s05_voice3", MN_VOICE, 2);
+    page(dir, "s06_voice4", MN_VOICE, 3);
+    page(dir, "s07_env_attack", MN_ENV, 0);
+    page(dir, "s08_env_gate", MN_ENV, 2);
+    page(dir, "s09_mix_pan", MN_MIX, 0);
+    page(dir, "s10_volume", MN_VOLUME, 0);
+    page(dir, "s11_fx_filter", MN_FX, 0);
+    page(dir, "s12_fx_lr", MN_FX, 1);
+    page(dir, "s13_keys", MN_KEYS, 0);
+    page(dir, "s14_seq", MN_SEQ, 0);
+    page(dir, "s15_tuning", MN_TUNING, 0);
+    page(dir, "s16_presets_save", MN_PRESETS, 2);
+    ui.menu = MN_HOME;
+    dlg_open(DLG_PRESET, 3);
+    run(200);
+    shot(dir, "s17_dialog");
+    ui.dlg = 0;
+    ui.help = 1;
+    for (t = 0; t < 6u; t++) {
+        char n[16];
+        ui.help_panel = (uint8_t)t;
+        ui.help_t = fm1_ms;
+        fm1_ms += 300;
+        draw_frame();
+        snprintf(n, sizeof n, "s2%u_help", t);
+        shot(dir, n);
+    }
     return 0;
 }
