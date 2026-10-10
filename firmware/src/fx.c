@@ -10,6 +10,7 @@ typedef struct {
     int32_t drive;                         /* input gain, Q12 */
     int32_t out;                           /* output gain, Q15: resonance makes it louder */
     uint8_t on;
+    lad_t lad;                             /* FILTER LADDER: Melodee's four-pole (analog.c) */
 } flt_t;
 static flt_t flt[2];
 
@@ -30,6 +31,11 @@ static void flt_tick(flt_t *f, int32_t freq, int32_t res, int32_t cv)
     int32_t idx = clamp(freq * 1023 / 127 + cv, 0, 1023), g = (int32_t)SVF_G[idx];
     int32_t k = 131072 - clamp(res, 0, 127) * 1010, den;
     f->on = freq < 127 || res > 0 || pt.g[G_FDRIVE] > 0 || cv < 0;
+    if (!pt.g[G_FMODE]) {                  /* LADDER: 24 dB, saturating input */
+        lad_coef(&f->lad, idx, res);
+        f->drive = 4096 + pt.g[G_FDRIVE] * 96;
+        return;
+    }
     den = 65536 + (int32_t)(((int64_t)g * (g + k)) >> 16);
     f->a1 = (int32_t)(0xFFFFFFFFu / (uint32_t)den);
     f->a2 = (int32_t)(((int64_t)g * f->a1) >> 16);
@@ -43,6 +49,12 @@ static void flt_run(flt_t *f, int32_t *x, uint32_t n)
     uint32_t i;
     int32_t ic1 = f->ic1, ic2 = f->ic2, a1 = f->a1, a2 = f->a2, a3 = f->a3, dr = f->drive;
     if (!f->on) {
+        f->ic1 = f->ic2 = 0;
+        return;
+    }
+    if (!pt.g[G_FMODE]) {
+        for (i = 0; i < n; i++)
+            x[i] = lad_run(&f->lad, (x[i] * dr) >> 12, 0);
         f->ic1 = f->ic2 = 0;
         return;
     }
@@ -73,7 +85,9 @@ typedef struct {
     int32_t dly;                           /* delay: time now (samples x 256), slewing */
     int32_t wet;                           /* wet gain now (Q15): pads 15 / 16, ramped */
     uint32_t hold, frz;                    /* crush counter / freeze: samples armed; freeze: the loop end */
-    uint16_t ri[6];                        /* reverb line positions */
+    uint16_t ri[16];                       /* reverb line positions (ROOM 6, PLATE 14) */
+    int32_t sp[4 * 11];                    /* SPRING: its allpass chain */
+    int32_t pv[5];                         /* PLATE (half rate): last and this L / R, the input held */
 } fx_t;
 static fx_t fx[2];
 static volatile uint8_t fx_mute;           /* bit per side: off (pads 15 / 16) */
@@ -130,12 +144,135 @@ static int32_t heads(const int16_t *m, uint32_t base, uint32_t mask, uint32_t en
     return (a * (int32_t)ga + b * (int32_t)(256u - ga)) >> 8;
 }
 
+/* PLATE: Dattorro's figure-eight tank (J. Dattorro, "Effect Design 1", 1997), lengths for 44.1 kHz: input
+ * diffusers, two halves of a modulated allpass, delay, damping, allpass, delay; seven taps per side (the
+ * slot L takes the left ones, R the right). X decay, Y tone, Z pre-delay. */
+enum { PL_IN = 0, PL_PRE = 50000, PL_PREM = 8191 };
+static const uint16_t PL_LEN[12] = {210, 159, 562, 410,           /* input diffusers */
+                                    1012, 6598, 2667, 5512,       /* half A: mod allpass, delay, allpass, delay */
+                                    1362, 6249, 3936, 4687};      /* half B */
+static const int16_t PL_TAP[2][7] = {{394, 4407, 2835, 2958, 2949, 277, 1580},
+                                     {523, 5374, 1820, 3961, 3128, 496, 179}};
+static const uint16_t PL_OFF[12] = {0, 210, 369, 931, 1341, 2353, 8951, 11618, 17130, 18492, 24741, 28677};
+_Static_assert(28677 + 4687 <= PL_PRE, "PLATE: the lines below the pre-delay");
+static inline int32_t pl_at(const int16_t *b, uint32_t len, int32_t i, int32_t back)   /* back samples ago */
+{
+    i -= back;
+    return b[i < 0 ? i + (int32_t)len : i];
+}
+static inline int32_t pl_ap(int16_t *b, uint16_t *ri, uint32_t len, int32_t x, int32_t c)   /* allpass, c Q15 */
+{
+    int32_t o = b[*ri], w = x - ((o * c) >> 15);
+    b[*ri] = s16(w);
+    *ri = (uint16_t)(*ri + 1u >= len ? 0u : *ri + 1u);
+    return o + ((w * c) >> 15);
+}
+static inline void pl_put(int16_t *b, uint16_t *ri, uint32_t len, int32_t x)
+{
+    b[*ri] = s16(x);
+    *ri = (uint16_t)(*ri + 1u >= len ? 0u : *ri + 1u);
+}
+static int32_t plate(fx_t *f, int16_t *m, int32_t x, int32_t X, int32_t Y, int32_t Z, uint32_t side)
+{
+    uint16_t *ri = f->ri;
+    int32_t decay = 14000 + X * 115, damp = 5000 + Y * 210, a, b, o, k;
+    int32_t ex;
+    uint32_t pc = f->hold++;                                         /* (this tank's own clock: half rate) */
+    m[PL_PRE + (pc & PL_PREM)] = s16(x);
+    x = m[PL_PRE + ((pc - 1u - (uint32_t)Z * 30u) & PL_PREM)];      /* pre-delay 0 .. 170 ms */
+    f->lp[2] += ((x - f->lp[2]) * (8000 + Y * 190)) >> 15;          /* input bandwidth */
+    x = f->lp[2] >> 1;
+    x = pl_ap(m + PL_OFF[0], &ri[0], PL_LEN[0], x, 24576);
+    x = pl_ap(m + PL_OFF[1], &ri[1], PL_LEN[1], x, 24576);
+    x = pl_ap(m + PL_OFF[2], &ri[2], PL_LEN[2], x, 20480);
+    x = pl_ap(m + PL_OFF[3], &ri[3], PL_LEN[3], x, 20480);
+    f->ph += 154000u;                                                /* ~0.8 Hz, the tank's wobble */
+    ex = SINE[f->ph >> 22] >> 11;                                    /* +-16 samples */
+    for (k = 0; k < 2; k++) {                                        /* the two halves, each fed by the other */
+        uint32_t h = (uint32_t)k * 4u + 4u;
+        int16_t *mb = m + PL_OFF[h];
+        int32_t in = x + ((f->st[k ^ 1] * decay) >> 15), e = k ? -ex : ex, rd, oo;
+        rd = pl_at(mb, PL_LEN[h], ri[h + 0u], PL_LEN[h] - 20 + e);   /* the modulated allpass (coef -0.7) */
+        oo = in + ((rd * 22938) >> 15);
+        pl_put(mb, &ri[h], PL_LEN[h], oo);
+        a = rd - ((oo * 22938) >> 15);
+        pl_put(m + PL_OFF[h + 1u], &ri[h + 1u], PL_LEN[h + 1u], a);
+        b = pl_at(m + PL_OFF[h + 1u], PL_LEN[h + 1u], ri[h + 1u], (int32_t)PL_LEN[h + 1u] - 1);
+        f->lp[k] += ((b - f->lp[k]) * damp) >> 15;                  /* damping */
+        b = pl_ap(m + PL_OFF[h + 2u], &ri[h + 2u], PL_LEN[h + 2u], (f->lp[k] * decay) >> 15, 16384);
+        pl_put(m + PL_OFF[h + 3u], &ri[h + 3u], PL_LEN[h + 3u], b);
+        f->st[k] = pl_at(m + PL_OFF[h + 3u], PL_LEN[h + 3u], ri[h + 3u], (int32_t)PL_LEN[h + 3u] - 1);
+    }
+    for (side = 0; side < 2u; side++) {   /* seven taps a side: + + - + (its half) - - - (the other) */
+        const int16_t *t = PL_TAP[side];
+        uint32_t A = side ? 4u : 8u, B = side ? 8u : 4u;   /* (left: mostly the second half, as Dattorro's) */
+        o = pl_at(m + PL_OFF[A + 1u], PL_LEN[A + 1u], ri[A + 1u], t[0]) +
+            pl_at(m + PL_OFF[A + 1u], PL_LEN[A + 1u], ri[A + 1u], t[1]) -
+            pl_at(m + PL_OFF[A + 2u], PL_LEN[A + 2u], ri[A + 2u], t[2]) +
+            pl_at(m + PL_OFF[A + 3u], PL_LEN[A + 3u], ri[A + 3u], t[3]) -
+            pl_at(m + PL_OFF[B + 1u], PL_LEN[B + 1u], ri[B + 1u], t[4]) -
+            pl_at(m + PL_OFF[B + 2u], PL_LEN[B + 2u], ri[B + 2u], t[5]) -
+            pl_at(m + PL_OFF[B + 3u], PL_LEN[B + 3u], ri[B + 3u], t[6]);
+        f->pv[2u + side] = (o * 19661) >> 15;
+    }
+    return 0;
+}
+
+/* SPRING (after Melodee37's spring, Kerem Kilic): the loop through ten stretched allpasses (the chirp, the
+ * drips), damping and decay; the far end and a second pickup. X size / decay, Y damping, Z wobble. */
+#define SP_N 10u
+static int32_t spring(fx_t *f, int16_t *ln, int32_t xin, int32_t X, int32_t Y, int32_t Z)
+{
+    uint32_t wp = f->w, j = (wp & 3u) * (SP_N + 1u), k;
+    int32_t g = 19661 + X * 85, kl = 26000 - Y * 160, len = 1323 + ((X * 1323) >> 7), L2, L3, fr, w, p, o, v;
+    int32_t x = (xin * 2580) >> 15, r = ln[(wp - (uint32_t)len) & 4095u], t0, t1;
+    int32_t *chain = f->sp + j;
+    f->ph2 += 3000u + (uint32_t)Z * 200u;
+    w = (len << 7) + ((SINE[f->ph2 >> 22] * (3 + Z / 16)) >> 8);   /* the far end, Q8 */
+    L2 = w >> 8;
+    fr = w & 255;
+    L3 = (len * 3) >> 2;
+    t0 = ln[(wp - (uint32_t)L2) & 4095u];
+    t1 = ln[(wp - (uint32_t)L2 - 1u) & 4095u];
+    f->lp[0] += ((r - f->lp[0]) * kl) >> 15;
+    o = f->lp[0] * g;
+    x += (o + ((o >> 31) & 32767)) >> 15;
+    o = x - f->lp[1] + f->lp[2];                   /* low cut, the remainder kept */
+    f->lp[2] = o & 63;
+    f->lp[1] += o >> 6;
+    x -= f->lp[1];
+    p = chain[0];
+    chain[0] = x;
+    for (k = 1; k <= SP_N; k++) {
+        v = (x - chain[k]) * 2867;
+        o = chain[k];
+        x = ((v + ((v >> 31) & 4095)) >> 12) + p;
+        p = o;
+        chain[k] = x;
+    }
+    ln[wp & 4095u] = s16(x);
+    return (t0 + (((t1 - t0) * fr) >> 8)) * 4 + ln[(wp - (uint32_t)L3) & 4095u] * 2;
+}
+
 static int32_t fx_sample(fx_t *f, int16_t *m, int32_t x, uint32_t side)
 {
     const int16_t *g = &pt.g[side ? G_FXRX : G_FXLX];
     int32_t X = g[0], Y = g[1], Z = g[2], y = 0;
     uint32_t w = ++f->w;
     switch (f->type) {
+    case FX_PLATE:                         /* at half rate (the tail needs no more): both sides' taps */
+        if (w & 1u) {
+            f->pv[0] = f->pv[2], f->pv[1] = f->pv[3];
+            plate(f, m, (x + f->pv[4]) >> 1, X, Y, Z, side);
+            y = f->pv[2u + side];
+        } else {
+            f->pv[4] = x;
+            y = (f->pv[side] + f->pv[2u + side]) >> 1;
+        }
+        break;
+    case FX_SPRING:
+        y = spring(f, m, x, X, Y, Z);
+        break;
     case FX_REVERB:                        /* X decay, Y tone, Z pre-delay */
         y = reverb(f, m, x, 22000 + X * 83, (127 - Y) * 200, 1u + (uint32_t)Z * 80u, side);
         break;
@@ -159,7 +296,7 @@ static int32_t fx_sample(fx_t *f, int16_t *m, int32_t x, uint32_t side)
     case FX_CHORUS: {                      /* X rate, Y depth, Z feedback */
         int32_t d;
         f->ph += (uint32_t)(X * X + 40) * 13u;
-        d = (661 << 8) + ((SINE[f->ph >> 22] * (Y * 14 + 20)) >> 9);   /* 15 ms +- up to 10 ms */
+        d = (661 << 8) + ((SINE[(f->ph + side * 0x80000000u) >> 22] * (Y * 14 + 20)) >> 9);   /* 15 ms +- 10 ms */
         y = rdi(m, ((w & FXM) << 8) - (uint32_t)d);
         m[w & FXM] = s16(x + ((y * Z * 180) >> 15));
         break;
@@ -220,8 +357,20 @@ static int32_t fx_sample(fx_t *f, int16_t *m, int32_t x, uint32_t side)
 /* both sides: bus in, bus out (dry + wet by BLEND) */
 static void fx_run(int32_t *l, int32_t *r, uint32_t n)
 {
+    static int32_t in[2][CTL];
     uint32_t s, i;
     int32_t blend = pt.g[G_BLEND] * 258;
+    for (i = 0; i < n; i++) {              /* each side's input hears a third of the other: a wider space */
+        in[0][i] = clamp(l[i] + r[i] / 3, -32767, 32767);
+        in[1][i] = clamp(r[i] + l[i] / 3, -32767, 32767);
+    }
+    /* two PLATEs: one tank, fed by both sides, its left taps to L, its right taps to R (Dattorro's stereo) */
+    int shared = fx[0].type == FX_PLATE && fx[1].type == FX_PLATE && !fx[0].clr && !fx[1].clr &&
+                 pt.g[G_FXL] == FX_PLATE && pt.g[G_FXR] == FX_PLATE;
+    static int32_t pr[CTL];
+    if (shared)
+        for (i = 0; i < n; i++)
+            in[0][i] = (in[0][i] + in[1][i]) >> 1;
     for (s = 0; s < 2u; s++) {
         fx_t *f = &fx[s];
         int16_t *m = fxmem[s];
@@ -236,6 +385,8 @@ static void fx_run(int32_t *l, int32_t *r, uint32_t n)
             memset(f->lp, 0, sizeof f->lp);
             memset(f->st, 0, sizeof f->st);
             memset(f->ri, 0, sizeof f->ri);
+            memset(f->sp, 0, sizeof f->sp);
+            memset(f->pv, 0, sizeof f->pv);
             f->hold = 0;
         }
         if (f->clr) {
@@ -251,7 +402,13 @@ static void fx_run(int32_t *l, int32_t *r, uint32_t n)
             continue;
         dw = (tgt - f->wet) / (int32_t)n;
         for (i = 0; i < n; i++) {
-            int32_t y = fx_sample(f, m, clamp(x[i], -32767, 32767), s);
+            int32_t y;
+            if (shared && s) {
+                y = pr[i];
+            } else {
+                y = fx_sample(f, m, in[s][i], s);
+                pr[i] = (f->w & 1u) ? f->pv[3] : (f->pv[1] + f->pv[3]) >> 1;
+            }
             f->wet += dw;
             x[i] = ((x[i] * (32767 - f->wet)) >> 15) + ((y * f->wet) >> 15);
         }

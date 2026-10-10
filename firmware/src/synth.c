@@ -97,6 +97,35 @@ static const uint8_t GEN_LO[5] = {12, 35, 50, 64, 79};      /* C0, B1, D3, E4, G
 static const uint8_t GEN_HI[5] = {43, 55, 71, 84, 98};      /* G2, G3, B4, C6, D7 */
 static const uint16_t VNORM[6] = {0, 22938, 16219, 13243, 11469, 10258};   /* 0.7 / sqrt(n) */
 
+static inline uint32_t xorshift(uint32_t *x)
+{
+    uint32_t v = *x ? *x : 0x9E3779B9u;
+    v ^= v << 13;
+    v ^= v >> 17;
+    v ^= v << 5;
+    return *x = v;
+}
+
+/* analog: each oscillator a little off (fixed) and drifting (a slow random walk), cents x 16; ANALOG sets how
+ * much. A voice's first call seeds it: its own random numbers, free-running phases anywhere. */
+static int32_t drift(vstate_t *s, uint32_t g)
+{
+    int32_t amt = pt.g[G_DRIFT], d;
+    if (!s->rnd) {
+        uint32_t k;
+        s->rnd = 0x2545F491u * (uint32_t)(s - vs + 1);
+        for (k = 0; k < 5u; k++) {
+            s->mis[k] = (int16_t)((int32_t)(xorshift(&s->rnd) & 255u) - 128);
+            s->ph[k] = xorshift(&s->rnd);
+        }
+    }
+    if ((xorshift(&s->rnd) & 1023u) == 0u)           /* a new aim, every ~0.7 s on average */
+        s->dt[g] = (int16_t)((int32_t)(xorshift(&s->rnd) & 255u) - 128);
+    d = s->dt[g] - s->dr[g];
+    s->dr[g] = (int16_t)(s->dr[g] + (d > 0 ? 1 : d < 0 ? -1 : 0));
+    return (s->mis[g] * amt / 256 + s->dr[g] * amt / 64);
+}
+
 static int32_t mod_cents(const int16_t *p)      /* the voice's MOD source: up to +-1 octave */
 {
     int32_t a = p[VP_MAMT];
@@ -108,14 +137,15 @@ static void classic_tick(vstate_t *s, const int16_t *p, int32_t fine)
     int32_t volt = p[CL_VOLT], trans = -volt * 2400 / 127, mc = mod_cents(p);
     uint32_t g;
     for (g = 0; g < 5u; g++) {
-        int32_t c = GEN_LO[g] * 100 + p[CL_TUNE1 + g] + trans + fine;
+        int32_t c = GEN_LO[g] * 100 + p[CL_TUNE1 + g] + trans + fine + (drift(s, g) >> 4);
         if ((p[CL_MOD] >> g) & 1)
             c += mc;
         s->inc[g] = (p[CL_MUTE] >> g) & 1 ? 0u : cents_inc(c);
     }
 }
 
-static void classic_render(vstate_t *s, const int16_t *p, int32_t *o, uint32_t n)
+/* the generators into two halves (1 3 5 -> o, 2 4 -> o2: the mix pans them apart) */
+static void classic_render(vstate_t *s, const int16_t *p, int32_t *o, int32_t *o2, uint32_t n)
 {
     int32_t volt = p[CL_VOLT], fm = volt > 64 ? (volt - 64) * 520 : 0;   /* past half: cross-FM, Q15 */
     uint32_t g, i, act = 0;
@@ -127,11 +157,12 @@ static void classic_render(vstate_t *s, const int16_t *p, int32_t *o, uint32_t n
         int32_t k = VNORM[act];
         for (g = 0; g < 5u; g++) {
             uint32_t ph = s->ph[g], inc = s->inc[g];
+            int32_t *x = g & 1u ? o2 : o;
             if (!inc)
                 continue;
             for (i = 0; i < n; i++) {
                 ph += inc;
-                o[i] += (saw(ph, inc) * k) >> 15;
+                x[i] += (saw(ph, inc) * k) >> 15;
             }
             s->ph[g] = ph;
             s->last[g] = 0;
@@ -141,21 +172,16 @@ static void classic_render(vstate_t *s, const int16_t *p, int32_t *o, uint32_t n
     {   /* each generator's pitch follows the one before it (5 -> 1 -> 2 -> ...) */
         int32_t k = VNORM[act], l0 = s->last[0], l1 = s->last[1], l2 = s->last[2], l3 = s->last[3], l4 = s->last[4];
         for (i = 0; i < n; i++) {
-            int32_t sum = 0;
-#define GEN(G, PREV, L)                                                                         \
-            if (s->inc[G]) {                                                                    \
-                uint32_t inc = s->inc[G] + (uint32_t)((int32_t)(s->inc[G] >> 15) * ((PREV * fm) >> 15)); \
-                s->ph[G] += inc;                                                                \
-                L = saw(s->ph[G], inc);                                                         \
-                sum += L;                                                               \
-            }
-            GEN(0, l4, l0)
-            GEN(1, l0, l1)
-            GEN(2, l1, l2)
-            GEN(3, l2, l3)
-            GEN(4, l3, l4)
+            int32_t sa = 0, sb = 0;
+#define GEN(G, PREV, L, SUM)                                                                                if (s->inc[G]) {                                                                                    uint32_t inc = s->inc[G] + (uint32_t)((int32_t)(s->inc[G] >> 15) * ((PREV * fm) >> 15));                 s->ph[G] += inc;                                                                                L = saw(s->ph[G], inc);                                                                         SUM += L;                                                                                   }
+            GEN(0, l4, l0, sa)
+            GEN(1, l0, l1, sb)
+            GEN(2, l1, l2, sa)
+            GEN(3, l2, l3, sb)
+            GEN(4, l3, l4, sa)
 #undef GEN
-            o[i] += (sum * k) >> 15;
+            o[i] += (sa * k) >> 15;
+            o2[i] += (sb * k) >> 15;
         }
         s->last[0] = l0, s->last[1] = l1, s->last[2] = l2, s->last[3] = l3, s->last[4] = l4;
     }
@@ -168,14 +194,6 @@ static void classic_render(vstate_t *s, const int16_t *p, int32_t *o, uint32_t n
 enum { NK_FMD, NK_LAG, NK_STEP, NK_TONE, NK_NOISE, NK_MODE };
 static uint8_t clk_edges;                  /* this tick: bit 0 LFO A wrapped, 1 LFO B, 2 pulser step */
 
-static inline uint32_t xorshift(uint32_t *x)
-{
-    uint32_t v = *x ? *x : 0x9E3779B9u;
-    v ^= v << 13;
-    v ^= v >> 17;
-    v ^= v << 5;
-    return *x = v;
-}
 
 static void noise_tick(vstate_t *s, const int16_t *p, int32_t fine)
 {
@@ -183,7 +201,8 @@ static void noise_tick(vstate_t *s, const int16_t *p, int32_t fine)
     uint32_t clk = (uint32_t)p[NZ_SHCLK];
     if (clk && ((clk_edges >> (clk - 1u)) & 1u))
         s->sh = (int32_t)xorshift(&s->nz) >> 16;   /* S&H on LFO A / B / the pulser */
-    c = lo + p[NZ_PITCH] * (hi - lo) / 127 + fine + mod_cents(p) + ((s->sh * (a * a * 2400 / 16129)) >> 15);
+    c = lo + p[NZ_PITCH] * (hi - lo) / 127 + fine + mod_cents(p) + ((s->sh * (a * a * 2400 / 16129)) >> 15) +
+        (drift(s, 0) >> 4);
     s->inc[0] = cents_inc(c);
     if (s->inc[0] > 1u << 28)
         s->inc[0] = 1u << 28;
@@ -274,7 +293,7 @@ static void adsr(vstate_t *s, const int16_t *p, uint32_t gate)
 static void vco_tick(uint32_t v, vstate_t *s, const int16_t *p, int32_t fine, int32_t glide)
 {
     int32_t tgt = (key_cents[v - 3u] + OCT_CENTS[p[VC_OCT] & 7] + p[VC_TUNE] + fine + mod_cents(p) +
-                   ((joy_x * 200) >> 15)) * 16, w;                 /* the joystick bends +-2 semitones */
+                   ((joy_x * 200) >> 15)) * 16 + drift(s, 0), w;   /* the joystick bends +-2 semitones */
     if (!s->pitch || !glide)
         s->pitch = tgt;
     else

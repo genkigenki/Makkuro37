@@ -8,7 +8,7 @@ static const uint8_t VTYPE[NV] = {VT_CLASSIC, VT_CLASSIC, VT_NOISE, VT_VCO, VT_V
 
 /* per-voice parameters: T0..T9 by type, then the common ones */
 enum { VP_T0, VP_T1, VP_T2, VP_T3, VP_T4, VP_T5, VP_T6, VP_T7, VP_T8, VP_T9,
-       VP_ATT, VP_RLS, VP_MSRC, VP_MAMT, VP_GSRC, VP_VOL, VP_PAN, VP_N };
+       VP_ATT, VP_RLS, VP_MSRC, VP_MAMT, VP_GSRC, VP_VOL, VP_PAN, VP_TONE, VP_N };
 /* classic: five saws (cents above the generator's lowest note), VOLT, MUTE / MOD bit masks */
 enum { CL_TUNE1 = VP_T0, CL_VOLT = VP_T5, CL_MUTE = VP_T6, CL_MOD = VP_T7 };
 /* noise ("Papa Srapa"): tone + square modulator */
@@ -29,9 +29,11 @@ enum {                          /* global parameters */
     G_SEQ1, G_SEQ2, G_SEQ3, G_SEQ4, G_SEQ5, G_SGATES, G_STAGES, G_PULSER, G_RUN,
     G_FFL, G_FRL, G_FFR, G_FRR, G_FLINK, G_FDRIVE, G_FCVSRC, G_FCVAMT,
     G_FXL, G_FXR, G_FXLX, G_FXLY, G_FXLZ, G_FXRX, G_FXRY, G_FXRZ, G_BLEND,
+    G_DRIFT, G_WIDTH, G_FMODE,  /* (appended: stored scenes keep their order) */
     G_COUNT
 };
-enum { FX_OFF, FX_REVERB, FX_DELAY, FX_SHIMMER, FX_CHORUS, FX_PHASER, FX_CRUSH, FX_RING, FX_FREEZE, FX_N };
+enum { FX_OFF, FX_REVERB, FX_DELAY, FX_SHIMMER, FX_CHORUS, FX_PHASER, FX_CRUSH, FX_RING, FX_FREEZE, FX_SPRING, FX_PLATE,
+       FX_N };
 
 typedef struct {                /* a scene: what the sound is */
     int16_t v[NV][VP_N];
@@ -45,7 +47,7 @@ typedef struct {                /* run-time state of a voice (audio side) */
     uint8_t stage;              /* 0 idle, 1 attack, 2 decay / sustain, 3 release */
     uint8_t gate;               /* last gate seen */
     uint8_t hits;               /* gate triggers so far (the screen's hammers) */
-    int32_t gl, gr;             /* gains now (Q15), ramped per sample */
+    int32_t gl, gr, gl2, gr2;   /* gains now (Q15), ramped per sample; 2: a classic voice's second half */
     int32_t level;              /* output level for the screen and the pads, Q15 */
     /* noise voice */
     uint32_t mph, minc;
@@ -53,6 +55,9 @@ typedef struct {                /* run-time state of a voice (audio side) */
     int32_t lag, am, sh;
     uint8_t cnt;
     int32_t kv[6];              /* per-tick constants of the render (by type) */
+    int16_t mis[5], dr[5], dt[5];   /* analog: fixed mismatch, drift now, its aim (cents x 16) */
+    int32_t lp[2][2];           /* the voice's tone low-pass (2 poles), per half */
+    uint32_t rnd;               /* its own random numbers */
     /* VCO */
     int32_t pitch;              /* cents x 16, gliding */
     uint8_t trig;               /* key triggers seen */

@@ -11,6 +11,7 @@
 #include "../firmware/src/synth.h"
 #include "../firmware/src/tuning.c"
 #include "../firmware/src/synth.c"
+#include "../firmware/src/analog.c"
 #include "../firmware/src/fx.c"
 #include "../firmware/src/mix.c"
 #include "../firmware/src/params.c"
@@ -82,11 +83,17 @@ static void reset(void)
     memset((void *)gate_in, 0, sizeof gate_in);
     key_gate = 0;
     memset(&md, 0, sizeof md);
+    patch_init(&pt);
+#ifdef NOFX
+    pt.g[G_FXL] = pt.g[G_FXR] = FX_OFF;
+#endif
+#ifdef NOFLT
+    pt.g[G_FFL] = pt.g[G_FFR] = 127, pt.g[G_FRL] = pt.g[G_FRR] = pt.g[G_FDRIVE] = pt.g[G_FCVSRC] = 0;
+#endif
     memset(fx, 0, sizeof fx);
     memset(flt, 0, sizeof flt);
     memset(&syn, 0, sizeof syn);
     fx_mute = 0;
-    patch_init(&pt);
 }
 #define SEC(s) ((uint32_t)((s) * FS / CTL))
 

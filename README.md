@@ -9,8 +9,10 @@ soot creature on the screen that a hammer bonks awake.
 | 3, 8 | noise drone: square tone + square modulator, FM along a DIVIDER staircase (sirens), AM, noise, S&H |
 | 4, 5 | VCO: saw, pulse, triangle, sine, saw morph, sine/triangle morph, octave LO–1', FM 4→5, sync, ADSR with HOLD / LOOP |
 
-Plus LFO A / B, joystick (wheels), 5-step sequencer with PULSER, dual 12 dB filter, dual effector (reverb, delay,
-shimmer, chorus, phaser, crush, ring, freeze), stereo mixer, tuning sets (12-TET, just, Pythagorean, 24-TET,
+Every oscillator drifts a little (ANALOG), each voice runs through a tanh knee and a two-pole TONE, classic voices
+spread their generators in stereo (WIDTH). Plus LFO A / B, joystick (wheels), 5-step sequencer with PULSER, dual
+filter (LADDER 24 dB or POLIVOKS 12 dB), dual effector (plate, room, spring, delay, shimmer, chorus, phaser, crush,
+ring, freeze), stereo mixer with Melodee's limiter, tuning sets (12-TET, just, Pythagorean, 24-TET,
 maqam Rast, slendro, pelog) with root, 8 scenes with MORPH.
 
 ## Controls
@@ -49,5 +51,7 @@ clears another firmware's stored data (and the other way round). USB serial cons
 
 ## Credits
 
-Board layer (keys, pads, display, audio, flash, USB, update loader) from SLOOP by
-isod89, based on Felucca by Leo Kuroshita. Terminus font (SIL OFL 1.1). GPL-3.0 (LICENSE).
+Sound after Melodee by Kerem Kilic (its PROPHET ladder, tanh knee, limiter,
+spring reverb; GPL-3.0). Board layer (keys, pads, display, audio, flash, USB, update loader) from SLOOP by isod89,
+based on Felucca by Leo Kuroshita. PLATE after J. Dattorro, "Effect Design 1" (1997). Terminus font (SIL OFL 1.1).
+GPL-3.0 (LICENSE).

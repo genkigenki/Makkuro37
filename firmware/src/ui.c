@@ -113,7 +113,7 @@ static void page_build(void)
         it_v(VP_GSRC);
         break;
     case PG_MIX:
-        it_v(VP_VOL), it_v(VP_PAN), it_g(G_MASTER), it_g(G_BLEND);
+        it_v(VP_VOL), it_v(VP_PAN), it_v(VP_TONE), it_g(G_MASTER), it_g(G_BLEND), it_g(G_DRIFT), it_g(G_WIDTH);
         break;
     case PG_TUNING:
         it_g(G_TSET), it_g(G_ROOT), it_g(G_SNAP), it_g(G_FINE), it_g(G_GLIDE), it_g(G_KEYS);
@@ -128,8 +128,9 @@ static void page_build(void)
         it_g(G_STAGES), it_g(G_PULSER), it_g(G_RUN);
         break;
     case PG_FILTER:
-        for (k = G_FFL; k <= G_FCVAMT; k++)
-            it_g((uint8_t)k);
+        it_g(G_FFL), it_g(G_FRL), it_g(G_FFR), it_g(G_FRR), it_g(G_FMODE), it_g(G_FLINK), it_g(G_FDRIVE);
+        it_add(IK_NONE, 0, 0);
+        it_g(G_FCVSRC), it_g(G_FCVAMT);
         break;
     case PG_FX:
         it_g(G_FXL), it_g(G_FXR), it_g(G_BLEND), it_add(IK_NONE, 0, 0);

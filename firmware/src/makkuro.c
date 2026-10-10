@@ -29,6 +29,7 @@ bootguard_t bootguard __attribute__((section(".noinit")));
 #include "synth.h"
 #include "tuning.c"
 #include "synth.c"
+#include "analog.c"
 #include "fx.c"
 #include "mix.c"
 #include "params.c"

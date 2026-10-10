@@ -41,6 +41,14 @@ def main(path):
              [round(65536 * math.tan(math.pi * expmap(i, 30.0, 16000.0, 1023) / FS)) for i in range(1024)], 8)
     # tanh soft clip over x = -4..4 (513 points), Q15 out
     L += arr("TANH", "int16_t", [round(32767 * math.tanh((i - 256) / 64.0)) for i in range(513)])
+    # after Melodee37's PROPHET tables (Kerem Kilic, GPL-3.0): a tanh knee over 0..2 (Q15 in, x 32 a step),
+    # four-pole TPT ladder poles G = tan / (1 + tan), Q12, on the filter's cutoff curve
+    L += arr("SAT_Q15", "int16_t", [int(32767 * math.tanh(i / 2048 * 2)) for i in range(2049)])
+    L += arr("LAD_G", "uint16_t", [round(4096 * (lambda t: t / (1 + t))(math.tan(math.pi * expmap(i, 30.0, 16000.0, 1023) / FS)))
+                                    for i in range(1024)])
+    # a voice's tone: two one-poles, k = 1 - exp(-2 pi fc / FS), fc 250 Hz .. 18 kHz, Q15
+    L += arr("TONE_K", "uint16_t", [round(32767 * (1 - math.exp(-2 * math.pi * expmap(v, 250.0, 18000.0) / FS)))
+                                     for v in range(128)])
     with open(path, "w") as f:
         f.write("\n".join(L) + "\n")
     print(f"tables: {path}")
