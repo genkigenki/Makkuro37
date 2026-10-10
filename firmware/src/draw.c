@@ -174,10 +174,10 @@ static int big_draw(int32_t y0, int32_t h)               /* into a 240-wide canv
     const felucca_font_t *f;
     if ((int32_t)(big.until - fm1_ms) <= 0)
         return 0;
-    f = text_w(&FONT_XL, big.val) <= 236 ? &FONT_XL : &FONT_L;
+    f = h >= 70 && text_w(&FONT_XL, big.val) <= 236 ? &FONT_XL : &FONT_L;   /* (short room: L, its label S) */
     if (big.col < NV)                                    /* a mark under its column */
         cv_rect(COLW * big.col + 2, y0, COLW - 4, 4, rgbk(c, 256));
-    text_c(120, y0 + 4, &FONT_L, big.label, rgbk(c, 200));
+    text_c(120, y0 + 4, h < 70 ? &FONT_S : &FONT_L, big.label, rgbk(c, 200));
     text_c(120, y0 + h - f->h, f, big.val, rgbk(c, 256));
     return 1;
 }
@@ -198,55 +198,6 @@ static void home_header(void)
     cv_blit(0, 0);
 }
 
-/* below the creatures: each voice's note (one row), then the turned value / a message / CHAOS / KB, then what
- * the bottom pads do */
-static void home_bottom(void)
-{
-    static const char *const BOT[8] = {"KB", "", "", "", "", "PULSE", "HOLD", "CHAOS"};
-    uint32_t v, bl = (fm1_ms >> 8) & 1u, cz = (int32_t)(ui.cz.until - fm1_ms) > 0;
-    cv_begin(240, 124, C_BG);
-    for (v = 0; v < NV; v++) {                           /* the notes: selected (KB) boxed, rolling (CHAOS) white */
-        char b[8];
-        int32_t x = COLW * (int32_t)v;
-        int roll = cz && ui.cz.n < 3u && ((ui.cz.mask >> v) & 1u);
-        if ((ui.nsel >> v) & 1u)
-            cv_rect(x + 1, 0, COLW - 2, 17, rgbk(VCOL[v], 256));
-        cents_text(b, sizeof b, voice_note_now(v));
-        text_c(x + COLW / 2, 1, &FONT_S, b, (ui.nsel >> v) & 1u ? RGB(0, 0, 0) : roll ? RGB(255, 255, 255)
-                                                                   : rgbk(VCOL[v], 256));
-    }
-    if (big_draw(20, 70))
-        ;                                                /* (a turned knob: its value) */
-    else if (cz) {                                       /* CHAOS: each voice's three notes, the kept one boxed */
-        for (v = 0; v < NV; v++) {
-            int32_t x = COLW * (int32_t)v + COLW / 2, r;
-            if (!((ui.cz.mask >> v) & 1u))
-                continue;
-            for (r = 0; r < (int32_t)ui.cz.n; r++) {
-                char b[8];
-                int last = r == 2;
-                cents_text(b, sizeof b, ui.cz.hist[v][r]);
-                if (last)
-                    cv_rect(x - 14, 22 + 22 * r, 28, 19, rgbk(VCOL[v], 256));
-                text_c(x, 24 + 22 * r, &FONT_S, b, last ? RGB(0, 0, 0) : rgbk(VCOL[v], r ? 150 : 90));
-                if (!last)
-                    cv_rect(x - 11, 31 + 22 * r, 22, 1, rgbk(VCOL[v], 120));   /* (struck out) */
-            }
-        }
-    } else if (ui.kbm)                                   /* KB: what to do, blinking until a voice is selected */
-        text_c(120, 40, &FONT_L, ui.nsel ? "PLAY KEYBOARD" : "SELECT VOICES",
-               ui.nsel || bl ? RGB(60, 220, 255) : RGB(20, 70, 90));
-    else if ((int32_t)(ui.msg_until - fm1_ms) > 0)
-        text_c(120, 40, &FONT_L, ui.msg, RGB(255, 255, 255));
-    for (v = 0; v < 8u; v++) {                           /* the bottom pads' words, staggered on two rows */
-        int32_t w = text_w(&FONT_S, BOT[v]), x = clamp(COLW * (int32_t)v + COLW / 2, w / 2, 240 - w / 2);
-        uint16_t c = v == 0u ? RGB(60, 220, 255) : v == 5u ? RGB(255, 210, 40) : v == 6u ? RGB(200, 200, 220)
-                     : RGB(255, 60, 200);
-        text_c(x, (v & 1u) ? 106 : 90, &FONT_S, BOT[v], v == 0u && ui.kbm && bl ? RGB(255, 255, 255) : c);
-    }
-    cv_blit(0, 116);
-}
-
 /* a VCO wave for the picture, Q15 */
 static int32_t wave_y(uint32_t w, uint32_t ph, int32_t shape)
 {
@@ -263,12 +214,79 @@ static int32_t wave_y(uint32_t w, uint32_t ph, int32_t shape)
     return vco_wave(&t, w, ph, 0);
 }
 
+/* voice v's wave at ph, Q15 (NOISE: jagged, by i) */
+static int32_t voice_wave(uint32_t v, uint32_t ph, int32_t i)
+{
+    int32_t w = pt.v[v][VTYPE[v] == VT_VCO ? VC_WAVE : VP_WAVE];
+    if (VTYPE[v] == VT_VCO ? w == W_NOISE : w == CW_NOISE)
+        return (int32_t)(hash3(i / 4, (int32_t)v, 7) & 0xFFFFu) - 32768;
+    return VTYPE[v] == VT_VCO ? wave_y((uint32_t)w, ph, pt.v[v][VC_SHAPE]) : cwave((uint32_t)w, ph, 0);
+}
+
+/* below the creatures: each voice's note (one row), then the turned value / a message / CHAOS / KB, then what
+ * the bottom pads do */
+static void home_bottom(void)
+{
+    static const char *const BOT[8] = {"KB", "", "", "", "", "PULSE", "HOLD", "CHAOS"};
+    uint32_t v, bl = (fm1_ms >> 8) & 1u, cz = (int32_t)(ui.cz.until - fm1_ms) > 0;
+    cv_begin(240, 124, C_BG);
+    for (v = 0; v < NV; v++) {                           /* the notes: selected (KB) boxed, rolling (CHAOS) white */
+        char b[8];
+        int32_t x = COLW * (int32_t)v;
+        int roll = cz && ui.cz.n < 3u && ((ui.cz.mask >> v) & 1u);
+        if ((ui.nsel >> v) & 1u)
+            cv_rect(x + 1, 0, COLW - 2, 17, rgbk(VCOL[v], 256));
+        cents_text(b, sizeof b, voice_note_now(v));
+        text_c(x + COLW / 2, 1, &FONT_S, b, (ui.nsel >> v) & 1u ? RGB(0, 0, 0) : roll ? RGB(255, 255, 255)
+                                                                   : rgbk(VCOL[v], 256));
+        if (!cz) {                                       /* its wave, small */
+            int32_t i, ly = 0;
+            for (i = 0; i < 22; i++) {
+                int32_t y = 26 - (voice_wave(v, (uint32_t)i * 0x1745D174u, i * 2) * 6 >> 15);   /* (2 periods) */
+                if (i)
+                    cv_line(x + 3 + i, ly, x + 4 + i, y, rgbk(VCOL[v], 220));
+                ly = y;
+            }
+        }
+    }
+    if (big_draw(36, 52))
+        ;                                                /* (a turned knob: its value) */
+    else if (cz) {                                       /* CHAOS: each voice's three notes, the kept one boxed */
+        for (v = 0; v < NV; v++) {
+            int32_t x = COLW * (int32_t)v + COLW / 2, r;
+            if (!((ui.cz.mask >> v) & 1u))
+                continue;
+            for (r = 0; r < (int32_t)ui.cz.n; r++) {
+                char b[8];
+                int last = r == 2;
+                cents_text(b, sizeof b, ui.cz.hist[v][r]);
+                if (last)
+                    cv_rect(x - 14, 20 + 22 * r, 28, 19, rgbk(VCOL[v], 256));
+                text_c(x, 22 + 22 * r, &FONT_S, b, last ? RGB(0, 0, 0) : rgbk(VCOL[v], r ? 150 : 90));
+                if (!last)
+                    cv_rect(x - 11, 29 + 22 * r, 22, 1, rgbk(VCOL[v], 120));   /* (struck out) */
+            }
+        }
+    } else if (ui.kbm)                                   /* KB: what to do, blinking until a voice is selected */
+        text_c(120, 46, &FONT_L, ui.nsel ? "PLAY KEYBOARD" : "SELECT VOICES",
+               ui.nsel || bl ? RGB(60, 220, 255) : RGB(20, 70, 90));
+    else if ((int32_t)(ui.msg_until - fm1_ms) > 0)
+        text_c(120, 46, &FONT_L, ui.msg, RGB(255, 255, 255));
+    for (v = 0; v < 8u; v++) {                           /* the bottom pads' words, staggered on two rows */
+        int32_t w = text_w(&FONT_S, BOT[v]), x = clamp(COLW * (int32_t)v + COLW / 2, w / 2, 240 - w / 2);
+        uint16_t c = v == 0u ? RGB(60, 220, 255) : v == 5u ? RGB(255, 210, 40) : v == 6u ? RGB(200, 200, 220)
+                     : RGB(255, 60, 200);
+        text_c(x, (v & 1u) ? 106 : 90, &FONT_S, BOT[v], v == 0u && ui.kbm && bl ? RGB(255, 255, 255) : c);
+    }
+    cv_blit(0, 116);
+}
+
 /* ------------------------------------------------------------- menus: the eight columns --- */
 static void menu_header(const char *name, uint32_t p, uint32_t n)   /* the menu's name, its page "p/n" */
 {
     char b[8];
     cv_begin(240, 32, C_BG);
-    cv_text(2, 0, &FONT_L, name, RGB(235, 235, 245));
+    cv_text(2, 0, &FONT_L, name, ui.menu != MN_HOME && voice_page() ? rgbk(colc(0), 256) : RGB(235, 235, 245));
     fmt_int(b, (int32_t)p + 1);
     str_cat(b, "/", sizeof b);
     fmt_int(b + str_len(b), (int32_t)n);
@@ -284,21 +302,18 @@ static void menu_columns(void)
         const item_t *it = &ui.it[k];
         const pdesc_t *d = it_desc(it);
         int32_t x = COLW * (int32_t)k, v;
-        uint16_t c = rgbk(VCOL[k], 256), dim = rgbk(VCOL[k], 70);
+        const uint8_t *col = colc(k);
+        uint16_t c = rgbk(col, 256), dim = rgbk(col, 70);
         if (it->kind == IK_NONE || !d)
             continue;
         if (it->alt != NO && ((ui.altmask >> k) & 1u))   /* a pair showing its second value: lighter */
-            c = RGB((VCOL[k][0] + 255) >> 1, (VCOL[k][1] + 255) >> 1, (VCOL[k][2] + 255) >> 1);
+            c = RGB((col[0] + 255) >> 1, (col[1] + 255) >> 1, (col[2] + 255) >> 1);
         cv_rect(x + 1, 0, COLW - 2, 3, c);              /* the column's colour, under its knob */
         v = it_get(it);
         if (it->kind == IK_V && (it->id == VP_WAVE || (it->id == VC_WAVE && VTYPE[it->voice] == VT_VCO))) {
             int32_t yy, ly = 0;                          /* WAVE: the wave itself, down the column */
             for (yy = 0; yy < 96; yy++) {
-                uint32_t ph = (uint32_t)yy * 0x5555555u;   /* (two periods) */
-                int vco = !(it->id == VP_WAVE && VTYPE[it->voice] != VT_VCO);
-                int32_t s2 = (vco ? v == W_NOISE : v == CW_NOISE) ? (int32_t)(hash3(yy / 4, k, 7) & 0xFFFFu) - 32768
-                             : vco ? wave_y((uint32_t)v, ph, pt.v[it->voice][VC_SHAPE]) : cwave((uint32_t)v, ph, 0);
-                int32_t xx = x + 15 + (s2 * 11 >> 15);
+                int32_t xx = x + 15 + (voice_wave(it->voice, (uint32_t)yy * 0x5555555u, yy) * 11 >> 15);   /* (2 periods) */
                 if (yy)
                     cv_thick(x + 15 + ly, 10 + yy - 1, xx, 10 + yy, c);
                 ly = xx - x - 15;
@@ -374,11 +389,11 @@ static void menu_columns_text(void)   /* a row of the voices: the page's name; e
             b[6] = 0;
             w = text_w(&FONT_S, b);
             cx = clamp(cx, w / 2 + 1, 239 - w / 2);      /* (inside the screen) */
-            text_c(cx, (k & 1u) ? 15 : 0, &FONT_S, b, rgbk(VCOL[k], 256));
+            text_c(cx, (k & 1u) ? 15 : 0, &FONT_S, b, rgbk(colc(k), 256));
         }
         it_text(&ui.it[k], b, sizeof b);
         b[3] = 0;
-        text_c(COLW * (int32_t)k + COLW / 2, 31, &FONT_S, b, rgbk(VCOL[k], 200));
+        text_c(COLW * (int32_t)k + COLW / 2, 31, &FONT_S, b, rgbk(colc(k), 200));
     }
 }
 static void menu_bottom(void)                 /* a turned knob's value, big; a message; or the page's words */
@@ -614,7 +629,7 @@ static void draw_frame(void)
             if (ui.dlg)
                 dialog_screen();
         } else {
-            menu_header(MENUS[ui.menu].name, ui.page, MENUS[ui.menu].n);
+            menu_header(voice_page() ? page_cur()->name : MENUS[ui.menu].name, ui.page, MENUS[ui.menu].n);
             menu_columns();
             if (ui.dlg)
                 dialog_screen();

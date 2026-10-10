@@ -85,7 +85,9 @@ The banks are shortcuts: every fader parameter is also in a menu. A fader sets i
 4. Press **CHORD** again, or **PATCH**, to go home.
 5. Try the other menus: **PARA** SOUND, **NOTE REPEAT** MOTION, **SCALE** TUNING, **FX** EFFECTS,
    **SEQ** SEQUENCER, **ARP** KEYS, **GLOBE** MIX.
-6. In **PARA**, page VOICE 1: K1-K5 tune the five oscillators. The top pads switch each one on or off,
+6. **PARA** SOUND has one page per voice after WAVE: its number and kind in the header (V1 DRONE, V3 NOISE,
+   V4 VCO), the page in its colour. Each voice's wave also shows small under its note at home.
+7. In **PARA**, page V1 DRONE: K1-K5 tune the five oscillators. The top pads switch each one on or off,
    the bottom pads switch its modulation.
 
 ## 5. Free-play and hold
@@ -152,8 +154,8 @@ The banks are shortcuts: every fader parameter is also in a menu. A fader sets i
 |---|---|---|
 | ![](img/screen-home.png) home | ![](img/screen-presets-2.png) PRESETS | ![](img/screen-dialog-save.png) replace a saved one |
 | ![](img/screen-kb.png) KB | ![](img/screen-chaos.png) CHAOS | ![](img/screen-faders-1.png) FADER BANK |
-| ![](img/screen-menu-sound-1.png) SOUND: WAVE | ![](img/screen-menu-sound-2.png) SOUND: VOICE 1 | ![](img/screen-menu-sound-4.png) SOUND: VOICE 3 (noise) |
-| ![](img/screen-menu-sound-5.png) SOUND: VOICE 4 (VCO) | ![](img/screen-menu-motion-1.png) MOTION: DETUNE | ![](img/screen-menu-mix-1.png) MIX: VOLUME |
+| ![](img/screen-menu-sound-1.png) SOUND: WAVE | ![](img/screen-menu-sound-2.png) SOUND: V1 DRONE | ![](img/screen-menu-sound-4.png) SOUND: V3 NOISE |
+| ![](img/screen-menu-sound-5.png) SOUND: V4 VCO | ![](img/screen-menu-motion-1.png) MOTION: DETUNE | ![](img/screen-menu-mix-1.png) MIX: VOLUME |
 | ![](img/screen-menu-effects-1.png) EFFECTS: FX L | ![](img/screen-menu-effects-3.png) EFFECTS: FILTER | ![](img/screen-menu-tuning-1.png) TUNING |
 | ![](img/screen-menu-motion-8.png) MOTION: LFO | ![](img/screen-menu-keys-1.png) KEYS | ![](img/screen-menu-setup-1.png) SETUP |
 | ![](img/screen-help-1.png) HELP: pads | ![](img/screen-help-3.png) HELP: menus | ![](img/screen-help-6.png) HELP: faders |

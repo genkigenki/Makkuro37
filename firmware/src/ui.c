@@ -34,8 +34,8 @@ static const page_t PAGES[] = {
     /* SOUND (PARA) */
     {"WAVE", PG_ROW, {VP_WAVE, VP_WAVE, VC_WAVE, NO, NO, NO, NO, NO}, NO, NO,
      "EACH VOICE'S WAVE\nNOISE: A WIND AT ITS PITCH"},
-    VOICE("VOICE 1", 0), VOICE("VOICE 2", 1), VOICE("VOICE 3", 2), VOICE("VOICE 4", 3),
-    VOICE("VOICE 5", 4), VOICE("VOICE 6", 5), VOICE("VOICE 7", 6), VOICE("VOICE 8", 7),
+    VOICE("V1 DRONE", 0), VOICE("V2 DRONE", 1), VOICE("V3 NOISE", 2), VOICE("V4 VCO", 3),
+    VOICE("V5 VCO", 4), VOICE("V6 DRONE", 5), VOICE("V7 DRONE", 6), VOICE("V8 NOISE", 7),
     /* ENVELOPE (CHORD) */
     ROW3("ATTACK", VP_ATT, "HOW SLOWLY A VOICE SWELLS IN\nLEFT: AT ONCE, RIGHT: SLOW"),
     ROW3("RELEASE", VP_RLS, "HOW LONG IT FADES WHEN OFF\nLEFT: SHORT, RIGHT: LONG"),
@@ -86,7 +86,7 @@ static const page_t PAGES[] = {
     {"JOYSTICK", PG_GLOB, {G_JXOFS, G_JYOFS, NO, NO, NO, NO, NO, NO}, NO, NO,
      "THE WHEELS' CENTRE: TRIM IF\nPITCH OR MOD DRIFTS"},
 };
-/* the voice pages: by its type */
+/* the voice pages (a voice's page: all in its colour, its name in the header): by its type */
 static const char *const VHELP[3] = {"5 TONES, ONE CHORD. VOLT: GRIT\nTOP PAD: TONE ON  BOT: MOD",
                                      "A TONE A SQUARE SHAKES:\nMODE FM / AM, NOISE: AIR",
                                      "THE KEYS' OSCILLATOR\nSHAPE BENDS THE WAVE"};
@@ -1132,12 +1132,20 @@ static void knobs_poll(void)
 /* eight distinct colours, one per column: the creature, its pad, its column in every menu */
 static const uint8_t VCOL[NV][3] = {{255, 64, 64}, {255, 150, 20}, {255, 230, 30}, {70, 230, 70},
                                     {20, 220, 255}, {70, 120, 255}, {170, 90, 255}, {255, 90, 210}};
+static int voice_page(void)
+{
+    return ui.menu >= MN_SOUND && ui.menu < MN_PRESETS && page_cur()->kind == PG_VOICE;
+}
+static const uint8_t *colc(uint32_t k)                 /* column k's colour (a voice's page: the voice's) */
+{
+    return VCOL[voice_page() ? page_cur()->id[0] : k & 7u];
+}
 static void ui_leds(void)
 {
     uint32_t v, b, sc = 4u + settings.bright * 12u;     /* pad brightness of 256 */
 #define PAD(p, r, g, bl, k) padled_set(p, (uint8_t)((r) * (k) * sc >> 16), (uint8_t)((g) * (k) * sc >> 16), \
                                        (uint8_t)((bl) * (k) * sc >> 16))
-#define PADC(p, c, k) PAD(p, VCOL[c][0], VCOL[c][1], VCOL[c][2], k)
+#define PADC(p, c, k) PAD(p, colc(c)[0], colc(c)[1], colc(c)[2], k)
     for (v = 0; v < 16u; v++)
         padled_set(v, 0, 0, 0);
     if (ui.dlg) {                                       /* a question: only red and green */
@@ -1190,8 +1198,8 @@ static void ui_leds(void)
                 if (d->fmt == F_ENUM)
                     PADC(8u + v, v, on ? 14 : 256);
             } else if (it->alt != NO)                   /* white: the knob edits the second (RATE) */
-                PAD(v, (ui.altmask >> v) & 1u ? 255 : VCOL[v][0], (ui.altmask >> v) & 1u ? 255 : VCOL[v][1],
-                    (ui.altmask >> v) & 1u ? 255 : VCOL[v][2], 220);
+                PAD(v, (ui.altmask >> v) & 1u ? 255 : colc(v)[0], (ui.altmask >> v) & 1u ? 255 : colc(v)[1],
+                    (ui.altmask >> v) & 1u ? 255 : colc(v)[2], 220);
             else {
                 if (it->pid != NO) {
                     int32_t x = it->kind == IK_G ? pt.g[it->pid] : pt.v[it->voice][it->pid];

@@ -5,14 +5,14 @@ Generated from the firmware's menu table (tools/docs_img.sh). On every page knob
 | Button | Menu | Page | K1 | K2 | K3 | K4 | K5 | K6 | K7 | K8 |
 |---|---|---|---|---|---|---|---|---|---|---|
 | PARA | SOUND | WAVE | WAVE | WAVE | WAVE | WAVE | WAVE | WAVE | WAVE | WAVE |
-|  |  | VOICE 1 | TUNE 1 (pads: on, mod) | TUNE 2 (pads: on, mod) | TUNE 3 (pads: on, mod) | TUNE 4 (pads: on, mod) | TUNE 5 (pads: on, mod) | VOLT |  |  |
-|  |  | VOICE 2 | TUNE 1 (pads: on, mod) | TUNE 2 (pads: on, mod) | TUNE 3 (pads: on, mod) | TUNE 4 (pads: on, mod) | TUNE 5 (pads: on, mod) | VOLT |  |  |
-|  |  | VOICE 3 | PITCH | RANGE (pads) | RATE | RATE X (pads) | FM AMT | DIVIDER | MODE | NOISE |
-|  |  | VOICE 4 | SHAPE | OCTAVE | TUNE | FM |  |  |  |  |
-|  |  | VOICE 5 | SHAPE | OCTAVE | TUNE | FM | SYNC (pads) |  |  |  |
-|  |  | VOICE 6 | TUNE 1 (pads: on, mod) | TUNE 2 (pads: on, mod) | TUNE 3 (pads: on, mod) | TUNE 4 (pads: on, mod) | TUNE 5 (pads: on, mod) | VOLT |  |  |
-|  |  | VOICE 7 | TUNE 1 (pads: on, mod) | TUNE 2 (pads: on, mod) | TUNE 3 (pads: on, mod) | TUNE 4 (pads: on, mod) | TUNE 5 (pads: on, mod) | VOLT |  |  |
-|  |  | VOICE 8 | PITCH | RANGE (pads) | RATE | RATE X (pads) | FM AMT | DIVIDER | MODE | NOISE |
+|  |  | V1 DRONE | TUNE 1 (pads: on, mod) | TUNE 2 (pads: on, mod) | TUNE 3 (pads: on, mod) | TUNE 4 (pads: on, mod) | TUNE 5 (pads: on, mod) | VOLT |  |  |
+|  |  | V2 DRONE | TUNE 1 (pads: on, mod) | TUNE 2 (pads: on, mod) | TUNE 3 (pads: on, mod) | TUNE 4 (pads: on, mod) | TUNE 5 (pads: on, mod) | VOLT |  |  |
+|  |  | V3 NOISE | PITCH | RANGE (pads) | RATE | RATE X (pads) | FM AMT | DIVIDER | MODE | NOISE |
+|  |  | V4 VCO | SHAPE | OCTAVE | TUNE | FM |  |  |  |  |
+|  |  | V5 VCO | SHAPE | OCTAVE | TUNE | FM | SYNC (pads) |  |  |  |
+|  |  | V6 DRONE | TUNE 1 (pads: on, mod) | TUNE 2 (pads: on, mod) | TUNE 3 (pads: on, mod) | TUNE 4 (pads: on, mod) | TUNE 5 (pads: on, mod) | VOLT |  |  |
+|  |  | V7 DRONE | TUNE 1 (pads: on, mod) | TUNE 2 (pads: on, mod) | TUNE 3 (pads: on, mod) | TUNE 4 (pads: on, mod) | TUNE 5 (pads: on, mod) | VOLT |  |  |
+|  |  | V8 NOISE | PITCH | RANGE (pads) | RATE | RATE X (pads) | FM AMT | DIVIDER | MODE | NOISE |
 | CHORD | ENVELOPE | ATTACK | ATTACK | ATTACK | ATTACK | ATTACK | ATTACK | ATTACK | ATTACK | ATTACK |
 |  |  | RELEASE | RELEASE | RELEASE | RELEASE | RELEASE | RELEASE | RELEASE | RELEASE | RELEASE |
 |  |  | GATE | GATE | GATE | GATE | GATE | GATE | GATE | GATE | GATE |
