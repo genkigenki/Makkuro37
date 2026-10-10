@@ -59,15 +59,15 @@ static void sub(patch_t *p, uint32_t v, int32_t amt, int32_t div) { p->v[v][CL_S
 static void pflt(patch_t *p, int32_t mode, int32_t cut, int32_t res, int32_t fmr, int32_t fmd)
 {
     p->g[G_FMODE] = (int16_t)mode;
-    p->g[G_FFL] = p->g[G_FFR] = (int16_t)cut;
-    p->g[G_FRL] = p->g[G_FRR] = (int16_t)res;
+    p->g[G_FFL] = (int16_t)cut;
+    p->g[G_FRL] = (int16_t)res;
     p->g[G_FMR] = (int16_t)fmr, p->g[G_FMD] = (int16_t)fmd;
 }
 
 static void preset_old(uint32_t n, patch_t *p)   /* the first 24 (their old numbers) */
 {
-    p->g[G_FFL] = p->g[G_FFR] = 112;               /* (the faders' filter: a little closed, room to sweep) */
-    p->g[G_FRL] = p->g[G_FRR] = 16;
+    p->g[G_FFL] = 112;                             /* (the filter: a little closed, room to sweep) */
+    p->g[G_FRL] = 16;
     switch (n) {
     case 0:                                        /* LAYERED BED: four just chords, warm, beating, a long plate */
         p->g[G_TSET] = TS_JUST;
@@ -354,7 +354,7 @@ static void pulser(patch_t *p, int32_t rate, int32_t gates, int32_t stages, int3
 
 static void theme_more(uint32_t k, patch_t *p)   /* k: the preset number */
 {
-    p->g[G_FFL] = p->g[G_FFR] = 112, p->g[G_FRL] = p->g[G_FRR] = 16;
+    p->g[G_FFL] = 112, p->g[G_FRL] = 16;
     switch (k) {
     /* DRONES */
     case 14:                                       /* WARM BED */

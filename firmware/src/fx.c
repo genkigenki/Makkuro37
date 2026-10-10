@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
-/* Dual filter (L / R, 12 dB, Polivoks-like: driven, the band state clipped) and dual effector (one
+/* The filter (stereo: LADDER, POLIVOKS, BAND, DIST; driven, the band state clipped) and dual effector (one
  * "cartridge" per side: reverb, delay, shimmer, chorus, phaser, crush, ring, freeze; X Y Z each, BLEND). */
 
 /* ------------------------------------------------------------- filter --- */
@@ -137,7 +137,6 @@ typedef struct {
     int32_t pv[5];                         /* PLATE (half rate): last and this L / R, the input held */
 } fx_t;
 static fx_t fx[2];
-static volatile uint8_t fx_mute;           /* bit per side: off (pads 15 / 16) */
 
 static inline int32_t rdi(const int16_t *m, uint32_t pos8)   /* linear interpolation, position x 256 */
 {
@@ -476,9 +475,7 @@ static void fx_run(int32_t *l, int32_t *r, uint32_t n)
             if (f->clrpos >= FXN)
                 f->clr = 0;
         }
-        tgt = f->type && !f->clr && !((fx_mute >> s) & 1u) ? blend : 0;
-        if (((fx_mute >> s) & 1u) && f->type == FX_FREEZE)
-            f->frz = f->hold = 0;          /* the next freeze takes a new loop */
+        tgt = f->type && !f->clr ? blend : 0;
         if (!f->type || (f->clr && !f->wet))
             continue;
         dw = (tgt - f->wet) / (int32_t)n;

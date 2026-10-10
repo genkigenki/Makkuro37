@@ -99,7 +99,6 @@ static void reset(void)
     memset(&mst, 0, sizeof mst);
     mst.env = LIM_T;
     memset(tape_buf, 0, sizeof tape_buf);
-    fx_mute = 0;
 }
 #define SEC(s) ((uint32_t)((s) * FS / CTL))
 

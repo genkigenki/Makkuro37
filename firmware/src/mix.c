@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
 /* The mix: the control tick of every voice, each voice's colour (tanh, tone), the stereo bus (volume, pan,
- * width), master, the dual filter and effector (fx.c), Melodee's limiter and soft clip (analog.c). */
+ * width), master, the filter and effector (fx.c), Melodee's limiter and soft clip (analog.c). */
 static int32_t vol_q15(int32_t v) { v = clamp(v, 0, 127); return v * v * 2; }
 
 static void synth_tick(void)

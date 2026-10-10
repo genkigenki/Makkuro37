@@ -118,7 +118,6 @@ typedef struct {
     uint8_t pbit, pid, pinv;               /* top pad: bit pbit of parameter pid (pinv: lit = clear); NO: none */
     uint8_t bid;                           /* bottom pad: bit pbit of this one (a generator's MOD) */
 } item_t;
-enum { SET_BRIGHT, SET_CONSOLE, SET_SPEAKER };
 enum { DLG_NONE, DLG_SAVE };
 enum { MO_IDLE, MO_REC, MO_LOOP, MO_STOP };
 #define MO_N 512u
