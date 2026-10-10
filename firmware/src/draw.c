@@ -214,7 +214,7 @@ static uint16_t icol(uint8_t kind, uint8_t id, uint8_t bit, int32_t k)
 static void bar_v(int32_t x, int32_t y, int32_t w, int32_t h, int32_t v, int32_t max, uint16_t c)
 {
     int32_t f = clamp(v, 0, max) * h / (max ? max : 1);
-    cv_rect(x, y, w, h, RGB(18, 14, 28));
+    cv_rect(x, y, w, h, RGB(44, 40, 62));
     cv_rect(x, y + h - f, w, f, c);
 }
 
@@ -226,7 +226,7 @@ static void scene_classic(uint32_t v, uint32_t now)
         int32_t x = 24 + 48 * (int32_t)g, span = (GEN_HI[g] - GEN_LO[g]) * 100, y = 66 - p[CL_TUNE1 + g] * 56 / span;
         uint16_t c = ui.page == PG_MUTEMOD ? icol(IK_VBIT, CL_MUTE, (uint8_t)g, 256) : VC(CL_TUNE1 + g);
         int muted = (p[CL_MUTE] >> g) & 1, mod = (p[CL_MOD] >> g) & 1;
-        cv_rect(x, 8, 2, 60, RGB(36, 30, 50));
+        cv_rect(x, 8, 2, 60, RGB(70, 64, 96));
         if (mod) {                                   /* MOD: the dot wobbles */
             uint16_t mc = ui.page == PG_MUTEMOD ? icol(IK_VBIT, CL_MOD, (uint8_t)g, 256) : rgbk(DIMC, 256);
             y += isin(now * 5000000u + g * 0x30000000u, 4);
@@ -302,9 +302,9 @@ static void scene_vco(uint32_t v, uint32_t now)
     }
     cv_rect(0, 76, 180 * p[VC_SHAPE] / 127, 3, VC(VC_SHAPE));
     for (x = 0; x < 8; x++)                          /* the octave switch: LO .. 1' */
-        cv_rect(196, 70 - x * 9, 16 + x * 2, 6, x == oc ? VC(VC_OCT) : RGB(30, 26, 44));
+        cv_rect(196, 70 - x * 9, 16 + x * 2, 6, x == oc ? VC(VC_OCT) : RGB(60, 56, 84));
     cv_rect(230, 40 - p[VC_TUNE] * 34 / 600, 8, 3, VC(VC_TUNE));   /* TUNE: a needle */
-    cv_rect(233, 6, 2, 70, RGB(30, 26, 44));
+    cv_rect(233, 6, 2, 70, RGB(60, 56, 84));
     if (ui.sub) {                                    /* FM / SYNC */
         if (p[VC_FM])
             cv_circle(90, 42, 10 + p[VC_FM] / 6 + isin(now * 9000000u, 3), VC(VC_FM));
@@ -326,11 +326,11 @@ static void scene_env(uint32_t v)
         cv_thick(x, 10, x + d, sy, VC(VC_DEC));
         x += d;
     }
-    cv_thick(x, sy, x + hold, sy, vco ? VC(VC_SUS) : RGB(60, 52, 80));
+    cv_thick(x, sy, x + hold, sy, vco ? VC(VC_SUS) : RGB(110, 100, 140));
     x += hold;
     cv_thick(x, sy, x + r, 72, VC(VP_RLS));
     cv_ellipse(200, 72 - e * 62 / 64, 6, 6, rgbk(VCOL[v], 256));     /* where the envelope is now */
-    cv_rect(197, 8, 6, 64, RGB(22, 18, 32));
+    cv_rect(197, 8, 6, 64, RGB(52, 48, 72));
     if (vco && p[VC_EG] == EG_LOOP)
         cv_circle(225, 30, 9, VC(VC_EG));
 }
@@ -341,9 +341,14 @@ static void scene_mix(uint32_t v)
     uint32_t i;
     bar_v(14, 8, 26, 66, p[VP_VOL], 127, VC(VP_VOL));
     cv_rect(44, 74 - (vs[v].level >> 9), 6, vs[v].level >> 9, rgbk(VCOL[v], 256));
-    cv_rect(66, 40, 76, 2, RGB(50, 44, 70));
-    cv_ellipse(66 + p[VP_PAN] * 76 / 127, 41, 8, 8, VC(VP_PAN));
-    bar_v(160, 8, 26, 66, pt.g[G_MASTER], 127, GC(G_MASTER));
+    cv_rect(56, 40, 34, 2, RGB(84, 78, 110));
+    cv_ellipse(56 + p[VP_PAN] * 34 / 127, 41, 7, 7, VC(VP_PAN));
+    {   /* TONE: flat, then down from its corner */
+        int32_t cx = 100 + p[VP_TONE] * 46 / 127;
+        cv_thick(96, 30, cx, 30, VC(VP_TONE));
+        cv_thick(cx, 30, cx + 12, 70, VC(VP_TONE));
+    }
+    bar_v(170, 8, 26, 66, pt.g[G_MASTER], 127, GC(G_MASTER));
     for (i = 0; i < 4u; i++)                         /* BLEND: wet drops */
         if ((int32_t)i * 32 < pt.g[G_BLEND])
             cv_ellipse(212, 66 - 16 * (int32_t)i, 6, 6, GC(G_BLEND));
@@ -354,7 +359,7 @@ static void scene_tuning(uint32_t now)
     const tset_t *t = &TSETS[pt.g[G_TSET] % TS_N];
     uint32_t k;
     char b[4];
-    cv_rect(8, 30, 224, 2, RGB(50, 44, 70));
+    cv_rect(8, 30, 224, 2, RGB(84, 78, 110));
     for (k = 0; k < t->n; k++) {                     /* the scale's ladder over one octave */
         int32_t x = 8 + t->c[k] * 224 / 1200;
         cv_rect(x, k ? 14 : 6, 3, k ? 30 : 38, k ? GC(G_TSET) : GC(G_ROOT));
@@ -367,7 +372,7 @@ static void scene_tuning(uint32_t now)
         cv_rect(96, 68, 28, 6, GC(G_SNAP));
     } else
         cv_circle(110, 62, 10, GC(G_SNAP));
-    cv_rect(150, 72, 80, 2, RGB(50, 44, 70));
+    cv_rect(150, 72, 80, 2, RGB(84, 78, 110));
     cv_thick(190, 72, 190 + pt.g[G_FINE] * 36 / 100, 48, GC(G_FINE));
     if (ui.sub) {
         cv_thick(10, 76, 10 + 30 + pt.g[G_GLIDE] / 2, 50, GC(G_GLIDE));
@@ -384,7 +389,7 @@ static void lfo_draw(int32_t y0, uint32_t ph, int32_t wave, uint16_t c1, uint16_
     for (x = 0; x < 200; x++) {
         int32_t y = y0 + 30 - (lfo_val(ph + (uint32_t)x * speed, wave) * 28 >> 15);
         if (x)
-            cv_line(x - 1, ly, x, y, x < 100 ? c1 : c2);
+            cv_thick(x - 1, ly, x, y, x < 100 ? c1 : c2);
         ly = y;
     }
     cv_ellipse(214, y0 + 30 - (lfo_val(ph, wave) * 28 >> 15), 6, 6, c1);
@@ -397,8 +402,8 @@ static void scene_lfo(void)
         lfo_draw(42, md.pb, pt.g[G_LBWAVE], GC(G_LBRATE), GC(G_LBWAVE), (1u << 25));
     } else {                                         /* the joystick: where it is now */
         int32_t x = 120 + (modv[MS_JOYX] * 50 >> 15), y = 74 - (modv[MS_JOYY] * 66 >> 15);
-        cv_rect(70, 41, 100, 2, RGB(50, 44, 70));
-        cv_rect(119, 6, 2, 70, RGB(50, 44, 70));
+        cv_rect(70, 41, 100, 2, RGB(84, 78, 110));
+        cv_rect(119, 6, 2, 70, RGB(84, 78, 110));
         cv_rect(120 + pt.g[G_JXOFS] * 50 / 64, 38, 3, 8, GC(G_JXOFS));
         cv_rect(116, 74 - (pt.g[G_JYOFS] + 64) * 66 / 128, 8, 3, GC(G_JYOFS));
         cv_ellipse(x, y, 8, 8, RGB(240, 240, 250));
@@ -410,9 +415,9 @@ static void scene_seq(uint32_t now)
     uint32_t s, st = 3u + (uint32_t)pt.g[G_STAGES];
     for (s = 0; s < 5u; s++) {
         int32_t x = 12 + 46 * (int32_t)s, on = (pt.g[G_SGATES] >> s) & 1;
-        uint16_t c = s < st ? GC(G_SEQ1 + s) : RGB(26, 22, 36);
+        uint16_t c = s < st ? GC(G_SEQ1 + s) : RGB(56, 52, 76);
         bar_v(x, 6, 30, 58, pt.g[G_SEQ1 + s], 127, c);
-        cv_rect(x, 68, 30, 8, on && s < st ? RGB(150, 60, 255) : RGB(30, 26, 44));
+        cv_rect(x, 68, 30, 8, on && s < st ? RGB(150, 60, 255) : RGB(60, 56, 84));
         if (pt.g[G_RUN] && md.step == s)
             cv_rect(x - 3, 4, 3, 72, RGB(255, 255, 255));
     }
@@ -444,7 +449,7 @@ static void scene_filter(uint32_t now)
                 y = 10 - r * 9 / 127 + d * 2;
             y = clamp(y, 0, 30) + y0;
             if (x)
-                cv_line(x - 1, ly, x, y, d < 0 ? cf : cr);
+                cv_thick(x - 1, ly, x, y, d < 0 ? cf : cr);
             ly = y;
         }
     }
@@ -463,9 +468,9 @@ static void scene_fx(uint32_t now)
     for (s = 0; s < 2u; s++) {
         int32_t x = 6 + 118 * (int32_t)s, on = pt.g[G_FXL + s] && !((ui.fx_off >> s) & 1u);
         uint16_t c = GC(G_FXL + s);
-        cv_rect(x, 4, 110, 2, on ? c : RGB(40, 34, 56));
-        cv_rect(x, 40, 110, 2, on ? c : RGB(40, 34, 56));
-        cv_text(x + 4, 8, &FONT_L, N_FX[pt.g[G_FXL + s] % FX_N], on ? c : RGB(70, 64, 96));
+        cv_rect(x, 4, 110, 2, on ? c : RGB(80, 74, 104));
+        cv_rect(x, 40, 110, 2, on ? c : RGB(80, 74, 104));
+        cv_text(x + 4, 8, &FONT_L, N_FX[pt.g[G_FXL + s] % FX_N], on ? c : RGB(120, 112, 150));
         for (k = 0; k < 3u; k++)
             bar_v(x + 10 + 34 * (int32_t)k, 46, 22, 30, pt.g[(s ? G_FXRX : G_FXLX) + k], 127,
                   GC((s ? G_FXRX : G_FXLX) + k));
@@ -572,7 +577,7 @@ static void draw_header(void)
     cv_rect(0, 0, 240, 1, RGB(60, 20, 70));
     x = cv_text(4, 1, &FONT_L, ui.settings ? "SETUP" : PAGE_NAME[ui.page], RGB(235, 235, 245));
     for (k = 0; n > 1u && k < n; k++)
-        cv_ellipse(x + 8 + 12 * (int32_t)k, 17, 4, 4, k == ui.sub ? RGB(235, 235, 245) : RGB(60, 54, 84));
+        cv_ellipse(x + 8 + 12 * (int32_t)k, 17, 4, 4, k == ui.sub ? RGB(235, 235, 245) : RGB(96, 90, 124));
     if (!ui.settings && (ui.page <= PG_MIX)) {
         char d[2] = {(char)('1' + ui.voice), 0};
         cv_ellipse(220, 17, 15, 15, rgbk(VCOL[ui.voice], 256));
