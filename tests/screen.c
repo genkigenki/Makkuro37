@@ -206,9 +206,17 @@ static void docs(const char *dir)                       /* every screen, for the
     shot(dir, "free-play");
     free_play(0);
     big.until = 0, ui.msg_until = 0;
-    chaos(0, 8);                                       /* CHAOS: all re-rolled */
-    run(100);
+    chaos(0, 8);                                       /* CHAOS: three notes each, the third kept */
+    run(500);
     shot(dir, "chaos");
+    big.until = 0, ui.msg_until = 0, ui.cz.until = 0;
+    ui.note = 1;                                       /* NOTE: pick voices, then a key */
+    run(100);
+    shot(dir, "note");
+    ui.nsel = 0x05;
+    run(100);
+    shot(dir, "note-picked");
+    ui.note = ui.nsel = 0;
     for (m = MN_SOUND; m < MN_N; m++)                  /* every page of every menu */
         for (pg = 0; MENUS[m].name && pg < MENUS[m].n; pg++) {
             const char *nm = MENUS[m].name;

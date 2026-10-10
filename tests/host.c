@@ -184,6 +184,7 @@ static void s_seq(uint32_t b)                      /* voice 1 gated by the seque
     pt.g[G_PULSER] = 70;
     pt.g[G_SGATES] = 0x1B;
     pt.v[0][VP_GSRC] = GS_SEQ;
+    gate_in[0] = 1;                                 /* (its pad on: the sequencer plays it) */
     pt.v[0][VP_ATT] = 10;
     pt.v[0][VP_RLS] = 40;
     pt.v[0][CL_MOD] = 0x18;

@@ -115,7 +115,7 @@ static void creature(int32_t cx, int32_t cy, int32_t r0x, int32_t r0y, int32_t l
 }
 
 /* ------------------------------------------------------------- home: the creatures in a row --- */
-#define CRH 124
+#define CRH 84
 static struct {
     uint8_t hits;
     uint32_t hit_t, ph, blink_t, drawn;
@@ -127,9 +127,8 @@ static int creature_cell(uint32_t v, int force)
     int32_t lv = vs[v].level, hit = 0, t, bob;
     uint32_t now = fm1_ms, h, gs = (uint32_t)pt.v[v][VP_GSRC];
     int sleep = !vs[v].stage && lv < 200, blink;
-    uint16_t c = rgbk(VCOL[v], 256);
-    if (vs[v].hits != cre[v].hits) {
-        cre[v].hits = vs[v].hits;
+    if ((uint8_t)(vs[v].hits + ui.czhit[v]) != cre[v].hits) {   /* woken, or rolled by CHAOS: a squish */
+        cre[v].hits = (uint8_t)(vs[v].hits + ui.czhit[v]);
         cre[v].hit_t = now;
     }
     t = (int32_t)(now - cre[v].hit_t) * 256 / 260;                    /* the wake-up squish: 260 ms */
@@ -147,26 +146,12 @@ static int creature_cell(uint32_t v, int force)
         return 0;
     cre[v].drawn = h;
     cv_begin(COLW, CRH, C_BG);
-    {
-        char d[2] = {(char)('1' + v), 0};
-        text_c(COLW / 2, -3, &FONT_L, d, c);                         /* its number, its colour */
-    }
-    creature(COLW / 2, 72 + bob, 12, 17, lv, hit, sleep, blink, VCOL[v], sleep ? fuzz_seed >> 4 : fuzz_seed + v);
+    creature(COLW / 2, 36 + bob, 12, 17, lv, hit, sleep, blink, VCOL[v], sleep ? fuzz_seed >> 4 : fuzz_seed + v);
     if (sleep && ((now >> 10) + v) % 4u == 0u)
-        cv_text(COLW - 9, 30 - (int32_t)((now >> 7) & 3u), &FONT_S, "z", RGB(170, 160, 220));
-    /* how its gate runs: HOLD (a solid square), held now (a ring), SEQ (steps), LFO (a wave), VCO: keys */
-    if (VTYPE[v] == VT_VCO)
-        cv_rect(7, CRH - 8, 16, 4, kb.padhold[v - 3u] ? c : RGB(110, 100, 140));   /* (a key) */
-    else if (ui.latched[v])
-        cv_rect(10, CRH - 11, 10, 9, c);
-    else if (ui.pad_gate[v])
-        cv_circle(15, CRH - 7, 4, c);
-    if (gs == GS_SEQ)
-        cv_rect(2, CRH - 5, 2, 3, c), cv_rect(5, CRH - 7, 2, 5, c), cv_rect(8, CRH - 9, 2, 7, c);
-    else if (gs == GS_LFOA || gs == GS_LFOB) {
-        int32_t i;
-        for (i = 0; i < 8; i++)
-            cv_rect(1 + i, CRH - 6 + isin((uint32_t)i * 0x20000000u, 3), 1, 2, c);
+        cv_text(COLW - 9, 3 - (int32_t)((now >> 7) & 3u), &FONT_S, "z", RGB(170, 160, 220));
+    if (gs != GS_PAD) {                                               /* who plays it besides the pad */
+        static const char *const GW[GS_N] = {"", "SEQ", "LFO", "LFO", "CAS"};
+        text_c(COLW / 2, CRH - 17, &FONT_S, GW[gs % GS_N], rgbk(VCOL[v], 200));
     }
     cv_blit(COLW * v, 32);
     return 1;
@@ -182,7 +167,7 @@ static void big_show(uint32_t col, const char *label, const char *val)
     str_cpy(big.val, val, sizeof big.val);
     ui.dirty = 1;
 }
-static int big_draw(int32_t h)                           /* into a 240 x h canvas: 1 if shown */
+static int big_draw(int32_t y0, int32_t h)               /* into a 240-wide canvas, rows y0 .. y0 + h: 1 if shown */
 {
     static const uint8_t WHITE[3] = {255, 255, 255};
     const uint8_t *c = big.col < NV ? VCOL[big.col] : WHITE;
@@ -191,9 +176,9 @@ static int big_draw(int32_t h)                           /* into a 240 x h canva
         return 0;
     f = text_w(&FONT_XL, big.val) <= 236 ? &FONT_XL : &FONT_L;
     if (big.col < NV)                                    /* a mark under its column */
-        cv_rect(COLW * big.col + 2, 0, COLW - 4, 4, rgbk(c, 256));
-    text_c(120, 4, &FONT_L, big.label, rgbk(c, 200));
-    text_c(120, h - f->h, f, big.val, rgbk(c, 256));
+        cv_rect(COLW * big.col + 2, y0, COLW - 4, 4, rgbk(c, 256));
+    text_c(120, y0 + 4, &FONT_L, big.label, rgbk(c, 200));
+    text_c(120, y0 + h - f->h, f, big.val, rgbk(c, 256));
     return 1;
 }
 
@@ -213,30 +198,53 @@ static void home_header(void)
     cv_blit(0, 0);
 }
 
+/* below the creatures: each voice's note (one row), then the turned value / a message / CHAOS / NOTE, then what
+ * the bottom pads do */
 static void home_bottom(void)
 {
-    uint32_t v;
-    cv_begin(240, 84, C_BG);
-    if (!big_draw(84)) {
-        if ((int32_t)(ui.msg_until - fm1_ms) > 0)
-            text_c(120, 26, &FONT_L, ui.msg, RGB(255, 255, 255));
-        else
-            for (v = 0; v < NV; v++) {                   /* each voice's note, big, staggered: 1 3 5 7 up, 2 4 6 8 down */
-                char b[16];
-                int32_t x = COLW * (int32_t)v + COLW / 2, y = (v & 1u) ? 44 : 6, c;
-                if (VTYPE[v] == VT_VCO && !kb.played)
-                    str_cpy(b, "-", sizeof b);
-                else {
-                    c = voice_base(v) + pt.v[v][VP_PITCH];
-                    c = (c + 50) / 100 * 100;            /* (the nearest note) */
-                    cents_text(b, sizeof b, c);
-                }
-                cv_rect(x - 1, (v & 1u) ? 2 : 38, 2, 4, rgbk(VCOL[v], 160));   /* (a tick up to its creature) */
-                text_c(clamp(x, text_w(&FONT_L, b) / 2, 240 - text_w(&FONT_L, b) / 2), y, &FONT_L, b,
-                       rgbk(VCOL[v], 256));
-            }
+    static const char *const BOT[8] = {"NOTE", "", "", "", "", "PULSE", "HOLD", "CHAOS"};
+    uint32_t v, bl = (fm1_ms >> 8) & 1u, cz = (int32_t)(ui.cz.until - fm1_ms) > 0;
+    cv_begin(240, 124, C_BG);
+    for (v = 0; v < NV; v++) {                           /* the notes: picked (NOTE) boxed, rolling (CHAOS) white */
+        char b[8];
+        int32_t x = COLW * (int32_t)v;
+        int roll = cz && ui.cz.n < 3u && ((ui.cz.mask >> v) & 1u);
+        if ((ui.nsel >> v) & 1u)
+            cv_rect(x + 1, 0, COLW - 2, 17, rgbk(VCOL[v], 256));
+        cents_text(b, sizeof b, voice_note_now(v));
+        text_c(x + COLW / 2, 1, &FONT_S, b, (ui.nsel >> v) & 1u ? RGB(0, 0, 0) : roll ? RGB(255, 255, 255)
+                                                                   : rgbk(VCOL[v], 256));
     }
-    cv_blit(0, 156);
+    if (big_draw(20, 70))
+        ;                                                /* (a turned knob: its value) */
+    else if (cz) {                                       /* CHAOS: each voice's three notes, the kept one boxed */
+        for (v = 0; v < NV; v++) {
+            int32_t x = COLW * (int32_t)v + COLW / 2, r;
+            if (!((ui.cz.mask >> v) & 1u))
+                continue;
+            for (r = 0; r < (int32_t)ui.cz.n; r++) {
+                char b[8];
+                int last = r == 2;
+                cents_text(b, sizeof b, ui.cz.hist[v][r]);
+                if (last)
+                    cv_rect(x - 14, 22 + 22 * r, 28, 19, rgbk(VCOL[v], 256));
+                text_c(x, 24 + 22 * r, &FONT_S, b, last ? RGB(0, 0, 0) : rgbk(VCOL[v], r ? 150 : 90));
+                if (!last)
+                    cv_rect(x - 11, 31 + 22 * r, 22, 1, rgbk(VCOL[v], 120));   /* (struck out) */
+            }
+        }
+    } else if (ui.note)                                  /* NOTE: what to press, blinking until a voice is picked */
+        text_c(120, 40, &FONT_L, ui.nsel ? "PLAY A KEY" : "PRESS A VOICE",
+               ui.nsel || bl ? RGB(60, 220, 255) : RGB(20, 70, 90));
+    else if ((int32_t)(ui.msg_until - fm1_ms) > 0)
+        text_c(120, 40, &FONT_L, ui.msg, RGB(255, 255, 255));
+    for (v = 0; v < 8u; v++) {                           /* the bottom pads' words, staggered on two rows */
+        int32_t w = text_w(&FONT_S, BOT[v]), x = clamp(COLW * (int32_t)v + COLW / 2, w / 2, 240 - w / 2);
+        uint16_t c = v == 0u ? RGB(60, 220, 255) : v == 5u ? RGB(255, 210, 40) : v == 6u ? RGB(200, 200, 220)
+                     : RGB(255, 60, 200);
+        text_c(x, (v & 1u) ? 106 : 90, &FONT_S, BOT[v], v == 0u && ui.note && bl ? RGB(255, 255, 255) : c);
+    }
+    cv_blit(0, 116);
 }
 
 /* a VCO wave for the picture, Q15 */
@@ -335,12 +343,27 @@ static void menu_columns(void)
     cv_blit(0, 32);
 }
 
+static void help_text(int32_t y, const char *s)           /* lines (\n) of FONT_S, centred */
+{
+    while (s && *s) {
+        char b[32];
+        uint32_t n = 0;
+        while (s[n] && s[n] != '\n' && n < sizeof b - 1u)
+            b[n] = s[n], n++;
+        b[n] = 0;
+        text_c(120, y, &FONT_S, b, RGB(150, 140, 190));
+        s += n + (s[n] == '\n');
+        y += 16;
+    }
+}
 static void menu_columns_text(void)   /* a row of the voices: the page's name; else each column's; the values */
 {
     uint32_t k;
-    int row = page_cur()->kind == PG_ROW;
+    const page_t *pg = page_cur();
+    int row = pg->kind == PG_ROW;
+    help_text(50, pg->kind == PG_VOICE ? VHELP[VTYPE[pg->id[0]]] : pg->help);
     if (row)
-        text_c(120, 6, &FONT_L, page_cur()->name, RGB(255, 220, 90));
+        text_c(120, -2, &FONT_L, pg->name, RGB(255, 220, 90));
     for (k = 0; k < 8u; k++) {
         char b[16];
         if (ui.it[k].kind == IK_NONE)
@@ -351,17 +374,17 @@ static void menu_columns_text(void)   /* a row of the voices: the page's name; e
             b[6] = 0;
             w = text_w(&FONT_S, b);
             cx = clamp(cx, w / 2 + 1, 239 - w / 2);      /* (inside the screen) */
-            text_c(cx, (k & 1u) ? 28 : 6, &FONT_S, b, rgbk(VCOL[k], 256));
+            text_c(cx, (k & 1u) ? 15 : 0, &FONT_S, b, rgbk(VCOL[k], 256));
         }
         it_text(&ui.it[k], b, sizeof b);
         b[3] = 0;
-        text_c(COLW * (int32_t)k + COLW / 2, 56, &FONT_S, b, rgbk(VCOL[k], 200));
+        text_c(COLW * (int32_t)k + COLW / 2, 31, &FONT_S, b, rgbk(VCOL[k], 200));
     }
 }
 static void menu_bottom(void)                 /* a turned knob's value, big; a message; or the page's words */
 {
     cv_begin(240, 84, C_BG);
-    if (!big_draw(84)) {
+    if (!big_draw(0, 84)) {
         if ((int32_t)(ui.msg_until - fm1_ms) > 0)
             text_c(120, 26, &FONT_L, ui.msg, RGB(255, 255, 255));
         else
@@ -377,7 +400,7 @@ static void presets_screen(void)
     char nm[32];
     const felucca_font_t *f;
     uint32_t n = ui.preset / PRESET_PAGE == th ? ui.preset : base;
-    menu_header("PRESETS", th, NTHEME + 1u);
+    menu_header(th < NTHEME ? THEME_NAME[th] : "MINE", th, NTHEME + 1u);
     nm[0] = 0;
     if (th < NTHEME) {                                   /* "5 RITUAL PAD"; MINE: "MINE 3", "EMPTY 4" */
         fmt_int(nm, (int32_t)(n % PRESET_PAGE + 1u));
@@ -386,13 +409,26 @@ static void presets_screen(void)
     preset_name(n, nm + str_len(nm), sizeof nm - str_len(nm));
     f = text_w(&FONT_XL, nm) <= 236 ? &FONT_XL : &FONT_L;
     cv_begin(240, 124, C_BG);
-    cv_text(4, 0, &FONT_L, th < NTHEME ? THEME_NAME[th] : "MINE", RGB(255, 220, 90));
-    text_c(120, 44, f, nm, RGB(255, 255, 255));
-    text_c(120, 94, &FONT_L, th < NTHEME ? "< >  THEME" : "HOLD PAD: SAVE", RGB(150, 140, 190));
+    for (k = 0; k < 8u; k++) {                           /* K1-K8: the filters, a bar each (the type in use lit) */
+        const pdesc_t *d = &GDESC[LENS[k].id];
+        int32_t x = COLW * (int32_t)k, h = (pt.g[LENS[k].id] - d->min) * 16 / (d->max - d->min);
+        int on = LENS[k].mode == NO || pt.g[G_FMODE] == LENS[k].mode;
+        const char *b = LENS[k].name;
+        cv_rect(x + 2, 0, COLW - 4, 3, rgbk(VCOL[k], on ? 256 : 70));
+        cv_rect(x + 8, 22 - h, 14, h, rgbk(VCOL[k], on ? 256 : 70));
+        text_c(clamp(x + COLW / 2, text_w(&FONT_S, b) / 2, 240 - text_w(&FONT_S, b) / 2), (k & 1u) ? 40 : 24,
+               &FONT_S, b, rgbk(VCOL[k], on ? 230 : 90));
+    }
+    text_c(120, 60, f, nm, RGB(255, 255, 255));
+    text_c(120, 108, &FONT_S, th < NTHEME ? "< > THEME   KNOBS: FILTERS" : "HOLD A PAD: SAVE", RGB(150, 140, 190));
     cv_blit(0, 32);
     if (ui.dlg)
         return;
     cv_begin(240, 84, C_BG);
+    if (big_draw(0, 84)) {
+        cv_blit(0, 156);
+        return;
+    }
     for (k = 0; k < 16u; k++) {                          /* the pads as they are lit: one preset each */
         uint32_t m = base + k, has = m < NPRESET || ((user_used >> (m - NPRESET)) & 1u);
         int32_t x = 4 + 29 * (int32_t)(k & 7u), y = k < 8u ? 2 : 30;
@@ -465,7 +501,7 @@ static const char *help_line(uint32_t p, uint32_t i, char *b, uint32_t n)
 {
     static const char *const T[HELP_N] = {"PADS", "KNOBS", "MENUS", "MENUS", "PLAY", "FADERS"};
     static const char *const L[HELP_N][6] = {
-        {"", "", "", "TOP: VOICES", "P PULSER", "H HOLD C CHAOS"},
+        {"", "", "", "TOP: VOICES", "N NOTE  P PULSE", "H HOLD C CHAOS"},
         {"HOME:", "K1-K8 PITCH", "MENU:", "KNOB=COLUMN", "2 CHOICES:", "THE PADS"},
         {0, 0, 0, 0, 0, 0},
         {0, 0, "KNOBB  PRESETS", "PATCH  HOME", "PATCH+ SETUP", "< >    PAGE"},
@@ -504,11 +540,12 @@ static void draw_help(void)
     cv_begin(240, 120, RGB(0, 0, 0));
     text_c(120, 0, &FONT_L, help_line(p, 0xFFu, b, sizeof b), RGB(255, 255, 255));
     if (p == 0u) {                                       /* the pads in their colours */
-        static const char BOT[8] = {' ', ' ', ' ', ' ', ' ', 'P', 'H', 'C'};
+        static const char BOT[8] = {'N', ' ', ' ', ' ', ' ', 'P', 'H', 'C'};
         for (k = 0; k < 16u; k++) {
             int32_t x = 1 + 30 * (int32_t)(k & 7u), y = k < 8u ? 34 : 76;
             char d[2] = {k < 8u ? (char)('1' + k) : BOT[k - 8u], 0};
-            uint16_t c = k < 8u ? rgbk(VCOL[k], 256) : k == 13u ? RGB(255, 210, 40) : k == 14u ? RGB(200, 200, 220)
+            uint16_t c = k < 8u ? rgbk(VCOL[k], 256) : k == 8u ? RGB(60, 220, 255) : k == 13u ? RGB(255, 210, 40)
+                         : k == 14u ? RGB(200, 200, 220)
                          : k == 15u ? RGB(255, 60, 200) : RGB(30, 28, 40);
             cv_rect(x, y, 28, 38, c);
             text_c(x + 14, y + 3, &FONT_L, d, RGB(0, 0, 0));

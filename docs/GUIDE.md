@@ -8,7 +8,8 @@ creatures. Hold **KNOB BANK** for HELP.
 ![The controls](img/panel-map.png)
 
 Every menu works the same way: its button opens it at page 1, **< >** turn the pages, knob **K1-K8** sets
-column 1-8, and a setting with two choices sits on the column's pads. The full map: [CONTROLS.md](CONTROLS.md).
+column 1-8, and a setting with two choices sits on the column's pads. Two lines under each page say what it does.
+The full map: [CONTROLS.md](CONTROLS.md).
 
 ---
 
@@ -20,9 +21,11 @@ column 1-8, and a setting with two choices sits on the column's pads. The full m
 
 1. Switch on. After the boot scene you see **PRESETS**.
 2. Tap any **pad**. You hear that preset straight away. The pad you are hearing is white.
-3. Press **<** or **>** to change the theme: DRONES, ABRAXAS, NATURE, SCI-FI, ORGAN, PULSE, MINE.
-4. Press **PATCH**. You see the creatures. The awake ones are singing.
-5. Press **KNOB BANK** to come back to the presets.
+3. Turn **K1-K4**: each is a filter type (LADDER, POLIVOKS, BAND, DIST). Turning one switches to it and sweeps
+   its cutoff. **K5-K8**: resonance, drive, movement and its rate.
+4. Press **<** or **>** to change the theme: DRONES, ABRAXAS, NATURE, SCI-FI, ORGAN, PULSE, MINE.
+5. Press **PATCH**. You see the creatures. The awake ones are singing.
+6. Press **KNOB BANK** to come back to the presets.
 
 ## 2. Tuning the creatures
 
@@ -35,7 +38,12 @@ column 1-8, and a setting with two choices sits on the column's pads. The full m
 3. Tap it again. It falls asleep (it fades out with its release). Tap once more right away: silent at once.
 4. **Hold** top pad 3 instead. It sings only while you hold it.
 5. Turn **K1**. Drone 1 moves up or down the scale. The note under creature 1 changes.
-6. On the creatures screen, **< >** step to the previous or next preset.
+6. Hold **top pad 1** and play a **key**. Drone 1 takes that note, in its own register, and stays on.
+7. Tap **N** (bottom pad 1). PRESS A VOICE blinks. Tap top pads 1, 2 and 6, then play keys: all three follow,
+   each in its own register. Tap **N** again to finish.
+8. On the creatures screen, **< >** step to the previous or next preset.
+
+<img src="img/screen-note-picked.png" width="240" alt="NOTE: voices 1 and 3 picked">
 
 ## 3. Faders and wheels
 
@@ -112,8 +120,9 @@ The banks are shortcuts: every fader parameter is also in a menu. A fader sets i
 
 <img src="img/screen-chaos.png" width="240" alt="CHAOS">
 
-1. On the creatures screen, tap **C** (bottom right). All classic drones get new notes, still in the scale.
-2. Hold **C** and tap **top pad 2**. Only drone 2 changes.
+1. On the creatures screen, tap **C** (bottom right). Every drone rolls three notes in the scale, one after
+   the other; you see and hear them. The third one stays (boxed).
+2. Hold **C** and tap **top pad 2**. Only drone 2 rolls, all of its sound, and it wakes up.
 3. Tap **H**. Everything that sounds now stays on. Tap **H** again: all off.
 4. Press **CHORD**, then **>** to GATE. Turn K2 and K3 to CASCADE. Go home and wake drone 1.
    Drones 2 and 3 follow, one after the other.
@@ -141,6 +150,7 @@ The banks are shortcuts: every fader parameter is also in a menu. A fader sets i
 | | | |
 |---|---|---|
 | ![](img/screen-home.png) home | ![](img/screen-presets-2.png) PRESETS | ![](img/screen-dialog-save.png) replace a saved one |
+| ![](img/screen-note.png) NOTE | ![](img/screen-chaos.png) CHAOS | ![](img/screen-faders-1.png) FADER BANK |
 | ![](img/screen-menu-sound-1.png) SOUND: WAVE | ![](img/screen-menu-sound-2.png) SOUND: VOICE 1 | ![](img/screen-menu-sound-4.png) SOUND: VOICE 3 (noise) |
 | ![](img/screen-menu-sound-5.png) SOUND: VOICE 4 (VCO) | ![](img/screen-menu-motion-1.png) MOTION: DETUNE | ![](img/screen-menu-mix-1.png) MIX: VOLUME |
 | ![](img/screen-menu-effects-1.png) EFFECTS: FX L | ![](img/screen-menu-effects-3.png) EFFECTS: FILTER | ![](img/screen-menu-tuning-1.png) TUNING |
