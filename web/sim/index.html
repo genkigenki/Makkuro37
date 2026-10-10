@@ -167,8 +167,23 @@ for (let i = 0; i < 4; i++) {
 }
 
 // ---- wheels: pitch springs back; mod up = more (raw 615 down .. 485 up)
-$("pitch").addEventListener("input", (ev) => send({ type: "wheel", i: 0, raw: +ev.target.value }));
-$("pitch").addEventListener("pointerup", (ev) => { ev.target.value = 540; send({ type: "wheel", i: 0, raw: 540 }); });
+const pitch = $("pitch");
+let pitchHeld = false, pitchAnim = 0;
+pitch.addEventListener("input", () => send({ type: "wheel", i: 0, raw: +pitch.value }));
+pitch.addEventListener("pointerdown", () => { pitchHeld = true; cancelAnimationFrame(pitchAnim); });
+function pitchHome() {                                 // let go: the spring pulls it back to the middle
+  pitchHeld = false;
+  cancelAnimationFrame(pitchAnim);
+  const step = () => {
+    const v = +pitch.value, d = 540 - v;
+    pitch.value = Math.abs(d) < 2 ? 540 : v + d * 0.35;
+    send({ type: "wheel", i: 0, raw: Math.round(+pitch.value) });
+    if (+pitch.value !== 540 && !pitchHeld) pitchAnim = requestAnimationFrame(step);
+  };
+  pitchAnim = requestAnimationFrame(step);
+}
+["change", "pointerup", "pointercancel", "lostpointercapture", "blur"].forEach((e) => pitch.addEventListener(e, () => { if (+pitch.value !== 540) pitchHome(); }));
+window.addEventListener("pointerup", () => { if (pitchHeld) pitchHome(); });
 $("mod").addEventListener("input", (ev) => send({ type: "wheel", i: 1, raw: 615 - +ev.target.value }));
 
 // ---- keys: 37, C..C, across the full width (black keys placed in % of it)
