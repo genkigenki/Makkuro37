@@ -4,7 +4,7 @@
  * one control tick (envelopes, pitches, gains), then the voices into the bus, then the master. */
 static patch_t pt;                         /* the sound (scene) */
 static vstate_t vs[NV];
-static volatile uint8_t gate_in[NV];       /* gates from the pads / keys (UI) */
+static volatile uint8_t gate_in[NV];       /* gates from the pads / keys (UI): 1 on, 2 off at once */
 static volatile uint8_t free_vco;          /* FREE-PLAY: the VCOs too follow gate_in (else only their keys) */
 static volatile uint8_t gate_vel[NV] = {100, 100, 100, 100, 100, 100, 100, 100};   /* the pads' velocity */
 static int32_t modv[MS_N];                 /* modulation sources, Q15 */

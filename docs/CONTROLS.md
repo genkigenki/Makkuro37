@@ -29,7 +29,7 @@ Generated from the firmware's menu table (tools/docs_img.sh). On every page knob
 |  |  | LFO | A RATE | A WAVE | B RATE | B WAVE | FMOD RATE |  |  |  |
 | SCALE | TUNING | TUNING | TUNING | ROOT | SNAP (pads) | FINE |  |  |  |  |
 | FX | EFFECTS | FX L  R | FX L | L X | L Y | L Z | FX R | R X | R Y | R Z |
-|  |  | FILTER | FILTER | DRIVE | CV SRC | CV AMT |  |  |  |  |
+|  |  | FILTER | FILTER | DRIVE | CV SRC | CV AMT |  |  |  | FX (pads) |
 | SEQ | SEQUENCER | STEPS | STEP 1 (pad: on) | STEP 2 (pad: on) | STEP 3 (pad: on) | STEP 4 (pad: on) | STEP 5 (pad: on) | STAGES | PULSER | RUN (pads) |
 |  |  | LOOP | LOOP (pads) |  |  |  |  |  |  |  |
 | ARP | KEYS | KEYS | KEYS | ARP | RATE | OCTAVES | LATCH (pads) | GLIDE | VIBRATO | VIB RATE |
@@ -40,9 +40,13 @@ Generated from the firmware's menu table (tools/docs_img.sh). On every page knob
 | PATCH+ | SETUP | SETUP | LIGHT | CONSOLE (pads) | OUTPUT (pads) | MASTER | ANALOG | WIDTH | TAPE |  |
 |  |  | JOYSTICK | X OFFS | Y OFFS |  |  |  |  |  |  |
 
-| Fader | |
-|---|---|
-| F1 | CUTOFF |
-| F2 | RESONANCE |
-| F3 | MOVEMENT |
-| F4 | SPACE |
+FADER BANK: the banks (< > or top pads 1-6). A fader sets its parameter when it moves.
+
+| Pad | Bank | F1 | F2 | F3 | F4 |
+|---|---|---|---|---|---|
+| 1 | FILTER | CUTOFF | RESO | MOVE | DRIVE |
+| 2 | SPACE | SPACE | FX X | FX Y | TAPE |
+| 3 | VOICES | 1+2 | 3+8 | 4+5 | 6+7 |
+| 4 | TIMBRE | VOLT | TONE | NZ FM | SHAPE |
+| 5 | MOTION | DETUNE | DT RATE | MOD AMT | ANALOG |
+| 6 | SWELL | ATTACK | RELEASE | GLIDE | VIBRATO |

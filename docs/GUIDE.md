@@ -32,7 +32,7 @@ column 1-8, and a setting with two choices sits on the column's pads. The full m
 
 1. On the creatures screen, each column is one drone: knob above, creature and note in the middle, pad below.
 2. Tap **top pad 3**. Creature 3 wakes up and sings.
-3. Tap it again. It falls asleep.
+3. Tap it again. It falls asleep (it fades out with its release). Tap once more right away: silent at once.
 4. **Hold** top pad 3 instead. It sings only while you hold it.
 5. Turn **K1**. Drone 1 moves up or down the scale. The note under creature 1 changes.
 6. On the creatures screen, **< >** step to the previous or next preset.
@@ -44,13 +44,25 @@ column 1-8, and a setting with two choices sits on the column's pads. The full m
 <img src="img/screen-fader.png" width="240" alt="A fader's value">
 
 1. Move **F1** (CUTOFF) slowly down. The sound gets darker. Its value shows big on the screen.
-2. Raise **F2** (RESONANCE). The filter starts to sing.
-3. Raise **F3** (MOVEMENT). The filter sweeps on its own.
-4. Raise **F4** (SPACE). More reverb.
+2. Raise **F2** (RESO). The filter starts to sing.
+3. Raise **F3** (MOVE). The filter sweeps on its own.
+4. Raise **F4** (DRIVE). The filter growls.
 5. Push the **MOD** wheel up. The filter closes. Move the **PITCH** wheel: everything bends, then springs back.
-6. Press **FADER BANK**. The effects switch off. Press it again: on.
+6. Press **FADER BANK**. You see the four faders: the bar is the value, the white line where the fader stands.
+7. Press **>** (or a top pad 1–6) for the next bank. The faders now move that bank.
 
-The faders always win: where a fader stands is what you hear, even after loading a preset.
+<img src="img/screen-faders-1.png" width="240" alt="FADER BANK, bank FILTER">
+
+| Bank | F1 | F2 | F3 | F4 |
+|---|---|---|---|---|
+| FILTER | cutoff | resonance | filter movement | drive |
+| SPACE | effect blend | effect X | effect Y | tape |
+| VOICES | volume 1+2 | volume 3+8 | volume 4+5 | volume 6+7 |
+| TIMBRE | volt (1 2 6 7) | tone | noise FM (3 8) | shape (4 5) |
+| MOTION | detune | detune rate | mod amount | analog |
+| SWELL | attack | release | glide | vibrato |
+
+A fader sets its parameter when you move it; switching banks changes nothing. The effects on / off: **FX** menu, page FILTER, pad 8.
 
 ## 4. Menus
 

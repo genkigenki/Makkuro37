@@ -5,9 +5,9 @@
  *   HOME: Ki = voice i's pitch, top pad i its gate; bottom pads P (pulser), H (hold all), C (chaos).
  *   A button opens its menu at page 1; < > turn the pages; the same button again, or PATCH, goes home. On every
  *   page knob Ki sets column i; a value with two choices (or on / off) sits on the column's top / bottom pad.
- *   KNOB BANK: PRESETS (held: HELP). PATCH: HOME (held: SETUP). The faders are fixed and absolute.
+ *   KNOB BANK: PRESETS (held: HELP). PATCH: HOME (held: SETUP). FADER BANK: the faders' banks (< >).
  * One table (PAGES / MENUS below) drives the menus, the pads, HELP and the docs. */
-enum { MN_HOME, MN_SOUND, MN_ENV, MN_MOTION, MN_TUNING, MN_FX, MN_SEQ, MN_KEYS, MN_MIX, MN_SETUP, MN_PRESETS, MN_N };
+enum { MN_HOME, MN_SOUND, MN_ENV, MN_MOTION, MN_TUNING, MN_FX, MN_SEQ, MN_KEYS, MN_MIX, MN_SETUP, MN_PRESETS, MN_FADERS, MN_N };
 /* button ids (smk_input.h) */
 enum { B_KNOBBANK, B_FADERBANK, B_LEFT, B_RIGHT, B_OCTDN, B_OCTUP, B_ARP, B_REPEAT, B_SCALE, B_CHORD, B_GLOBE,
        B_BT, B_PATCH, B_PARA, B_FX, B_SEQ, B_PLAY, B_REC };
@@ -15,7 +15,7 @@ enum { B_KNOBBANK, B_FADERBANK, B_LEFT, B_RIGHT, B_OCTDN, B_OCTUP, B_ARP, B_REPE
 /* ------------------------------------------------------------- the table --- */
 #define NO 0xFFu
 enum { PG_ROW, PG_GLOB, PG_VOICE };                    /* a row of one voice parameter / 8 globals / one voice */
-enum { X_LIGHT = 0xE0, X_CONSOLE, X_OUTPUT, X_LOOP, X_STEPREC };   /* (PG_GLOB: settings and pad actions) */
+enum { X_LIGHT = 0xE0, X_CONSOLE, X_OUTPUT, X_LOOP, X_STEPREC, X_FXON };   /* (PG_GLOB: settings and pad actions) */
 typedef struct {
     const char *name;
     uint8_t kind;
@@ -44,7 +44,7 @@ static const page_t PAGES[] = {
     {"TUNING", PG_GLOB, {G_TSET, G_ROOT, G_SNAP, G_FINE, NO, NO, NO, NO}, NO, NO},
     /* EFFECTS (FX) */
     {"FX L  R", PG_GLOB, {G_FXL, G_FXLX, G_FXLY, G_FXLZ, G_FXR, G_FXRX, G_FXRY, G_FXRZ}, NO, NO},
-    {"FILTER", PG_GLOB, {G_FMODE, G_FDRIVE, G_FCVSRC, G_FCVAMT, NO, NO, NO, NO}, NO, NO},
+    {"FILTER", PG_GLOB, {G_FMODE, G_FDRIVE, G_FCVSRC, G_FCVAMT, NO, NO, NO, X_FXON}, NO, NO},
     /* SEQUENCER (SEQ) */
     {"STEPS", PG_GLOB, {G_SEQ1, G_SEQ2, G_SEQ3, G_SEQ4, G_SEQ5, G_STAGES, G_PULSER, G_RUN}, NO, G_SGATES},
     {"LOOP", PG_GLOB, {X_LOOP, NO, NO, NO, NO, NO, NO, NO}, NO, NO},
@@ -70,10 +70,25 @@ static const menu_t MENUS[MN_N] = {
     [MN_SETUP] = {"SETUP", "PATCH+", B_PATCH, 33, 2},
 };
 _Static_assert(sizeof PAGES / sizeof PAGES[0] == 35u, "MENUS: the pages");
-/* the fixed faders: F1 cutoff, F2 resonance (both filters), F3 the filters' movement (LFO depth), F4 space (the
- * effects' blend) */
-static const char *const FADER_NAME[4] = {"CUTOFF", "RESONANCE", "MOVEMENT", "SPACE"};
-static const uint8_t FADER_G[4][2] = {{G_FFL, G_FFR}, {G_FRL, G_FRR}, {G_FMD, G_FMD}, {G_BLEND, G_BLENDR}};
+/* the fader banks (FADER BANK, < > or the top pads): four sound movers each, a global pair (L, R) or one voice
+ * parameter on a group of voices */
+typedef struct { const char *name; uint8_t g, id, b; } fdest_t;   /* g: globals id and b (NO: none); else id on mask b */
+typedef struct { const char *name; fdest_t f[4]; } fbank_t;
+#define FG(n, a, b) {n, 1, a, b}
+#define FV(n, k, m) {n, 0, k, m}
+static const fbank_t FBANK[] = {
+    {"FILTER", {FG("CUTOFF", G_FFL, G_FFR), FG("RESO", G_FRL, G_FRR), FG("MOVE", G_FMD, NO), FG("DRIVE", G_FDRIVE, NO)}},
+    {"SPACE", {FG("SPACE", G_BLEND, G_BLENDR), FG("FX X", G_FXLX, G_FXRX), FG("FX Y", G_FXLY, G_FXRY),
+               FG("TAPE", G_TAPE, NO)}},
+    {"VOICES", {FV("1+2", VP_VOL, 0x03), FV("3+8", VP_VOL, 0x84), FV("4+5", VP_VOL, 0x18), FV("6+7", VP_VOL, 0x60)}},
+    {"TIMBRE", {FV("VOLT", CL_VOLT, 0x63), FV("TONE", VP_TONE, 0xFF), FV("NZ FM", NZ_FMAMT, 0x84),
+                FV("SHAPE", VC_SHAPE, 0x18)}},
+    {"MOTION", {FV("DETUNE", VP_DMD, 0xFF), FV("DT RATE", VP_DMR, 0xFF), FV("MOD AMT", VP_MAMT, 0xFF),
+                FG("ANALOG", G_DRIFT, NO)}},
+    {"SWELL", {FV("ATTACK", VP_ATT, 0xFF), FV("RELEASE", VP_RLS, 0xFF), FG("GLIDE", G_GLIDE, NO),
+               FG("VIBRATO", G_VIBD, NO)}},
+};
+#define NFBANK (sizeof FBANK / sizeof FBANK[0])
 
 /* a column, as built from the table: the knob's parameter and what its pads do */
 enum { IK_NONE, IK_V, IK_G, IK_X };
@@ -97,10 +112,10 @@ static struct {
     char msg[28];
     uint32_t msg_until;
     uint8_t dirty;
-    uint8_t latched[NV], ignore_rel[NV], pad_gate[NV];
-    uint32_t t_press[NV];
+    uint8_t latched[NV], ignore_rel[NV], pad_gate[NV], hush[NV];
+    uint32_t t_press[NV], t_off[NV];   /* hush: off at once (a second tap while it fades) */
     uint64_t keys;
-    uint8_t fad_last[4];
+    uint8_t fad_last[4], fbank;
     uint32_t btn_t[FM1_NBTN];              /* buttons held since (ms | 1), 0 = up */
     uint8_t help, help_panel;
     uint32_t help_t;
@@ -121,6 +136,7 @@ enum { EV_GATE_ON = 1, EV_GATE_OFF, EV_V, EV_G };
 static void keys_poll(void);
 static void midi_poll(void);
 static void faders_sync(void);
+static void fbank_go(uint32_t n);
 static void mo_toggle(void);
 static void free_play(uint32_t on);
 static void free_release_all(void);
@@ -158,7 +174,7 @@ static void menu_build(void)
         it->kind = IK_NONE, it->id = 0, it->voice = (uint8_t)k, it->alt = it->pid = it->bid = NO, it->pbit = 0;
         it->pinv = 0;
     }
-    if (ui.menu == MN_HOME || ui.menu == MN_PRESETS)
+    if (ui.menu == MN_HOME || ui.menu == MN_PRESETS || ui.menu == MN_FADERS)
         return;
     if (ui.page >= MENUS[ui.menu].n)
         ui.page = 0;
@@ -203,9 +219,9 @@ static const pdesc_t *it_desc(const item_t *it)
 {
     static const char *const N_OUT[2] = {"LINE", "SPEAKER"};
     static const char *const N_LOOP[2] = {"REC", "STOP"};
-    static const pdesc_t X[5] = {{"LIGHT", 1, 8, 4, F_NUM, 0}, {"CONSOLE", 0, 1, 1, F_ONOFF, 0},
+    static const pdesc_t X[6] = {{"LIGHT", 1, 8, 4, F_NUM, 0}, {"CONSOLE", 0, 1, 1, F_ONOFF, 0},
                                  {"OUTPUT", 0, 1, 0, F_ENUM, N_OUT}, {"LOOP", 0, 1, 0, F_ENUM, N_LOOP},
-                                 {"STEP REC", 0, 1, 0, F_ENUM, N_LOOP}};
+                                 {"STEP REC", 0, 1, 0, F_ENUM, N_LOOP}, {"FX", 0, 1, 1, F_ONOFF, 0}};
     switch (it->kind) {
     case IK_V: return &VDESC[VTYPE[it->voice]][it->id];
     case IK_G: return &GDESC[it->id];
@@ -225,6 +241,7 @@ static int32_t it_get(const item_t *it)
         case X_CONSOLE: return settings.console;
         case X_OUTPUT: return settings.speaker;
         case X_LOOP: return ui.mo.state == MO_REC || ui.mo.state == MO_LOOP ? 0 : 1;
+        case X_FXON: return !fx_mute;
         default: return kb.rec ? 0 : 1;
         }
     default: return 0;
@@ -336,6 +353,8 @@ static void it_set(const item_t *it, int32_t v)          /* a new value (clamped
         settings.console = (uint8_t)v;
     else if (it->id == X_OUTPUT)
         settings.speaker = (uint8_t)v;
+    else if (it->id == X_FXON)
+        fx_mute = v ? 0 : 3;
     ui.dirty = 1;
 }
 
@@ -408,10 +427,10 @@ static void column_pad(uint32_t k, uint32_t top)
 static void autogate(void)                              /* a preset's voices start (VCOs: only by keys) */
 {
     uint32_t v, bits = (uint32_t)pt.g[G_AUTOGATE];
-    for (v = 0; v < NV; v++) {
-        uint32_t on = VTYPE[v] != VT_VCO && ((bits >> v) & 1u);
+    for (v = 0; v < NV; v++) {                          /* (a voice with its own gate source: on, it plays it) */
+        uint32_t on = VTYPE[v] != VT_VCO && (((bits >> v) & 1u) || pt.v[v][VP_GSRC] != GS_PAD);
         ui.latched[v] = ui.pad_gate[v] = (uint8_t)on;
-        ui.ignore_rel[v] = 0;
+        ui.ignore_rel[v] = ui.hush[v] = 0;
     }
     kb.padhold[0] = kb.padhold[1] = 0;
 }
@@ -550,14 +569,21 @@ static void gate_press(uint32_t v)
         kb.padhold[v - 3u] ^= 1u;
         return;
     }
-    mo_add(EV_GATE_ON, v, 0, 0);
-    if (ui.latched[v]) {                                /* a tap on a held drone ends it */
+    if (ui.latched[v]) {                                /* a tap on a held drone ends it (its release) */
         ui.latched[v] = 0;
         ui.pad_gate[v] = 0;
         ui.ignore_rel[v] = 1;
+        ui.t_off[v] = fm1_ms;
         mo_add(EV_GATE_OFF, v, 0, 0);
         return;
     }
+    if (vs[v].stage && fm1_ms - ui.t_off[v] < 600u) {  /* tapped again while it fades: silent at once */
+        ui.hush[v] = 1;
+        ui.ignore_rel[v] = 1;
+        return;
+    }
+    mo_add(EV_GATE_ON, v, 0, 0);
+    ui.hush[v] = 0;
     ui.pad_gate[v] = 1;
     ui.t_press[v] = fm1_ms;
 }
@@ -680,7 +706,10 @@ static void pads_poll(void)
             home_pad(pad, vel);
         else if (ui.menu == MN_PRESETS)
             picker_pad(pad, vel);
-        else if (vel)
+        else if (ui.menu == MN_FADERS) {                /* a top pad: that bank */
+            if (vel && pad < NFBANK)
+                fbank_go(pad);
+        } else if (vel)
             column_pad(pad & 7u, pad < 8u);
     }
 }
@@ -722,12 +751,43 @@ static void wheels_poll(void)
 }
 
 /* ------------------------------------------------------------- faders --- */
-/* Absolute: what they control always has their position (read at power-on, applied on every move and after
- * every preset). Faders win. */
+/* The bank's four, absolute: a fader sets its parameter when it moves (a new bank: nothing jumps); at power-on and
+ * after a preset the bank in use takes the faders as they stand. */
 static uint8_t fad_ready;
-static void fader_set(uint32_t i, uint32_t v)
+static uint32_t fd_voice(const fdest_t *f)              /* (a group: its first voice) */
 {
-    pt.g[FADER_G[i][0]] = pt.g[FADER_G[i][1]] = (int16_t)v;
+    uint32_t v = 0;
+    while (!((f->b >> v) & 1u))
+        v++;
+    return v;
+}
+static const pdesc_t *fd_desc(const fdest_t *f)
+{
+    return f->g ? &GDESC[f->id] : &VDESC[VTYPE[fd_voice(f)]][f->id];
+}
+static int32_t fd_get(const fdest_t *f)
+{
+    return f->g ? pt.g[f->id] : pt.v[fd_voice(f)][f->id];
+}
+static void fader_set(uint32_t i, uint32_t x)           /* x 0..127 over the parameter's range */
+{
+    const fdest_t *f = &FBANK[ui.fbank].f[i];
+    const pdesc_t *d = fd_desc(f);
+    int32_t val = d->min + (int32_t)x * (d->max - d->min) / 127;
+    uint32_t v;
+    if (f->g) {
+        pt.g[f->id] = (int16_t)val;
+        mo_add(EV_G, 0, f->id, val);
+        if (f->b != NO) {
+            pt.g[f->b] = (int16_t)val;
+            mo_add(EV_G, 0, f->b, val);
+        }
+    } else
+        for (v = 0; v < NV; v++)
+            if ((f->b >> v) & 1u) {
+                pt.v[v][f->id] = (int16_t)val;
+                mo_add(EV_V, v, f->id, val);
+            }
 }
 static void faders_sync(void)                           /* all four, as they stand */
 {
@@ -756,10 +816,17 @@ static void faders_poll(void)
             continue;
         ui.fad_last[i] = (uint8_t)v;
         fader_set(i, v);
-        mo_add(EV_G, 0, FADER_G[i][0], (int32_t)v);
-        fmt_int(b, (int32_t)v);
-        big_show(8, FADER_NAME[i], b);
+        ui.dirty = 1;
+        if (ui.menu != MN_FADERS) {                     /* (the FADERS screen shows them itself) */
+            fmt_int(b, fd_get(&FBANK[ui.fbank].f[i]));
+            big_show(8, FBANK[ui.fbank].f[i].name, b);
+        }
     }
+}
+static void fbank_go(uint32_t n)
+{
+    ui.fbank = (uint8_t)(n % NFBANK);
+    ui.dirty = 1;
 }
 
 /* ------------------------------------------------------------- the motion loop --- */
@@ -832,6 +899,8 @@ static void page_turn(int32_t d)                        /* < >: pages (PRESETS: 
         preset_load(n);
         preset_name(n, b, sizeof b);
         ui_say(b, 0);
+    } else if (ui.menu == MN_FADERS) {
+        fbank_go(ui.fbank + NFBANK + (uint32_t)d);
     } else if (ui.menu == MN_PRESETS) {
         uint32_t np = NTHEME + 1u, th = (ui.pre_sel / PRESET_PAGE + np + (uint32_t)d) % np;
         ui.pre_sel = (uint8_t)(ui.preset / PRESET_PAGE == th ? ui.preset : th * PRESET_PAGE);
@@ -866,9 +935,8 @@ static void buttons_poll(void)
             ui.oct = (int8_t)clamp(ui.oct + (b == B_OCTUP ? 1 : -1), -3, 3);
             ui_say(ui.oct ? "TRANSPOSE " : "TRANSPOSE 0", ui.oct < 0 ? "-" : ui.oct ? "+" : 0);
             break;
-        case B_FADERBANK:                               /* the effects on / off */
-            fx_mute = fx_mute ? 0 : 3;
-            ui_say(fx_mute ? "FX OFF" : "FX ON", 0);
+        case B_FADERBANK:                               /* the faders' banks */
+            menu_go(MN_FADERS);
             break;
         case B_PLAY:                                    /* FREE-PLAY: the keys wake the drones */
             free_play(!ui.free);
@@ -921,7 +989,7 @@ static void knobs_poll(void)
             ui.help_t = fm1_ms;
             continue;
         }
-        if (ui.dlg || ui.menu == MN_PRESETS)
+        if (ui.dlg || ui.menu == MN_PRESETS || ui.menu == MN_FADERS)
             continue;
         if (ui.menu == MN_HOME)
             pitch_turn(k, s);
@@ -949,7 +1017,7 @@ static void ui_leds(void)
         PAD(15, 0, 255, 0, 256);
     } else if (ui.menu == MN_HOME) {
         for (v = 0; v < NV; v++) {
-            int32_t l = vs[v].level, k = vs[v].stage ? 120 + (l >> 8) : 10;   /* idle: a dim glow; sounding: bright */
+            int32_t l = vs[v].level, k = ui.pad_gate[v] ? 120 + (l >> 8) : vs[v].stage ? 10 + (l >> 9) : 10;   /* on: bright; fading: dim */
             if (VTYPE[v] == VT_VCO && kb.padhold[v - 3u])
                 k = k < 160 ? 160 : k;
             PADC(v, v, k > 256 ? 256 : k);
@@ -967,6 +1035,12 @@ static void ui_leds(void)
             else
                 PADC(v, v & 7u, has ? 150 : 14);
         }
+    } else if (ui.menu == MN_FADERS) {                  /* the banks, the one in use white */
+        for (v = 0; v < NFBANK; v++)
+            if (v == ui.fbank)
+                PAD(v, 255, 255, 255, 256);
+            else
+                PADC(v, v, 120);
     } else
         for (v = 0; v < 8u; v++) {                      /* a menu: the pads that do something, lit by their value */
             const item_t *it = &ui.it[v];
@@ -1001,7 +1075,7 @@ static void ui_leds(void)
     fm1_led_key(B_PATCH, ui.menu == MN_SETUP);
     fm1_led_key(B_PLAY, ui.free);
     fm1_led_key(B_REC, ui.hold);
-    fm1_led_key(B_FADERBANK, !fx_mute);
+    fm1_led_key(B_FADERBANK, ui.menu == MN_FADERS);
     fm1_led_key(B_OCTDN, ui.oct < 0);
     fm1_led_key(B_OCTUP, ui.oct > 0);
 #undef PADC
@@ -1034,7 +1108,7 @@ static void ui_input(void)
     mo_play();
     speaker = settings.speaker;
     for (v = 0; v < NV; v++)
-        gate_in[v] = ui.pad_gate[v];
+        gate_in[v] = ui.pad_gate[v] ? 1u : ui.hush[v] ? 2u : 0u;
     free_vco = ui.free;
 }
 

@@ -14,19 +14,20 @@ static void synth_tick(void)
     for (v = 0; v < NV; v++) {
         vstate_t *s = &vs[v];
         const int16_t *p = pt.v[v];
-        uint32_t gate = gate_in[v] | gate_src((uint32_t)p[VP_GSRC], v), vel = gate_vel[v];
+        /* the pad switches the voice; its gate source (SEQ, LFO, CASCADE) then plays it. 2: off, fast */
+        uint32_t gate = gate_in[v] == 1u && (p[VP_GSRC] == GS_PAD || gate_src((uint32_t)p[VP_GSRC], v)), vel = gate_vel[v];
         int32_t att = clamp(p[VP_ATT] + (100 - (int32_t)vel) / 3, 0, 127);   /* soft pad: slower swell */
         if (VTYPE[v] == VT_VCO) {
             uint32_t i = v - 3u;
             gate = gate_src((uint32_t)p[VP_GSRC], v) | kb.gate[i] | (kb.padhold[i] && kb.played) |
-                   (free_vco && gate_in[v]);           /* (keys only; in FREE-PLAY the key that woke it) */
+                   (free_vco && gate_in[v] == 1u);           /* (keys only; in FREE-PLAY the key that woke it) */
             if (s->trig != kb.trig[i] && kb.gate[i])
                 s->gate = 0;                       /* a new key or arp step: attack again */
             s->trig = kb.trig[i];
             adsr(s, p, gate);
             vco_tick(v, s, p, fine, glide);
         } else {
-            env_ar(s, gate, (uint32_t)att, (uint32_t)p[VP_RLS]);
+            env_ar(s, gate, (uint32_t)att, gate_in[v] == 2u ? 40u : (uint32_t)p[VP_RLS]);
             if (s->stage) {
                 if (VTYPE[v] == VT_CLASSIC)
                     classic_tick(s, p, fine);

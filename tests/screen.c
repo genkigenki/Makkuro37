@@ -154,9 +154,11 @@ static void controls_md(const char *path)
             fprintf(f, "\n");
         }
     }
-    fprintf(f, "\n| Fader | |\n|---|---|\n");
-    for (k = 0; k < 4u; k++)
-        fprintf(f, "| F%u | %s |\n", k + 1, FADER_NAME[k]);
+    fprintf(f, "\nFADER BANK: the banks (< > or top pads 1-%u). A fader sets its parameter when it moves.\n\n"
+               "| Pad | Bank | F1 | F2 | F3 | F4 |\n|---|---|---|---|---|---|\n", (unsigned)NFBANK);
+    for (m = 0; m < NFBANK; m++)
+        fprintf(f, "| %u | %s | %s | %s | %s | %s |\n", m + 1, FBANK[m].name, FBANK[m].f[0].name, FBANK[m].f[1].name,
+                FBANK[m].f[2].name, FBANK[m].f[3].name);
     fclose(f);
     printf("  controls %s\n", path);
 }
@@ -189,6 +191,16 @@ static void docs(const char *dir)                       /* every screen, for the
     run(100);
     shot(dir, "fader");
     big.until = 0, ui.msg_until = 0;
+    ui.menu = MN_FADERS;                               /* FADER BANK: each bank */
+    for (t = 0; t < NFBANK; t++) {
+        fbank_go(t);
+        run(200);
+        snprintf(n, sizeof n, "faders-%u", t + 1);
+        shot(dir, n);
+    }
+    fbank_go(0);
+    ui.menu = MN_HOME;
+    run(200);
     free_play(1);                                      /* FREE-PLAY: keys wake the drones */
     run(400);
     shot(dir, "free-play");

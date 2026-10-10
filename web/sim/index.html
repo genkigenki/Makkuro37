@@ -117,7 +117,7 @@ function drawFb(fb) {
 }
 
 // ---- buttons (HAL ids): SMK name, what it does in Makkuro37
-const BTN = [["KNOB BANK", "PRESETS · held HELP"], ["FADER BANK", "FX on / off"], ["<", "page"], [">", "page"],
+const BTN = [["KNOB BANK", "PRESETS · held HELP"], ["FADER BANK", "fader banks"], ["<", "page"], [">", "page"],
   ["OCTAVE-", "transpose"], ["OCTAVE+", "transpose"], ["ARP", "KEYS"], ["NOTE REPEAT", "MOTION"], ["SCALE", "TUNING"],
   ["CHORD", "ENVELOPE"], ["GLOBE", "MIX"], ["BT", "-"], ["PATCH", "HOME · held SETUP"], ["PARA", "SOUND"],
   ["FX", "EFFECTS"], ["SEQ", "SEQUENCER"], ["SEQ PLAY", "FREE-PLAY"], ["SEQ REC", "HOLD"]];
@@ -158,10 +158,10 @@ for (let p = 0; p < 16; p++) {
   $("mid").appendChild(el);
 }
 
-// ---- faders, fixed: cutoff, resonance, movement (the filter's LFO), space (as the simulated device starts)
+// ---- faders: what they move is the bank shown on FADER BANK (as the simulated device starts)
 const FV = [112, 16, 0, 60];
 for (let i = 0; i < 4; i++) {
-  const d = mk("", `<input class="v" type="range" min="0" max="127" value="${FV[i]}"><div class="lab">${["CUTOFF", "RESO", "MOVE", "SPACE"][i]}</div>`);
+  const d = mk("", `<input class="v" type="range" min="0" max="127" value="${FV[i]}"><div class="lab">F${i + 1}</div>`);
   d.firstChild.addEventListener("input", (ev) => send({ type: "fader", i, v: +ev.target.value }));
   $("faders").appendChild(d);
 }

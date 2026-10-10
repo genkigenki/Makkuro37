@@ -399,6 +399,43 @@ static void presets_screen(void)
     cv_blit(0, 156);
 }
 
+/* ------------------------------------------------------------- FADERS: the bank in use --- */
+/* four faders as on the panel: the value filled, a white line where the fader stands; below, the banks as the pads */
+static const uint8_t FCOL[4] = {0, 2, 4, 6};            /* (the colours: VCOL) */
+static void faders_screen(void)
+{
+    uint32_t i;
+    menu_header(FBANK[ui.fbank].name, ui.fbank, NFBANK);
+    cv_begin(240, 124, C_BG);
+    for (i = 0; i < 4u; i++) {
+        const fdest_t *f = &FBANK[ui.fbank].f[i];
+        const pdesc_t *d = fd_desc(f);
+        const uint8_t *c = VCOL[FCOL[i]];
+        int32_t x = 60 * (int32_t)i + 22, y0 = 118, y1 = 6, span = d->max - d->min > 0 ? d->max - d->min : 1;
+        int32_t h = (fd_get(f) - d->min) * (y0 - y1) / span, y = y0 - (int32_t)fm1_in.fader[i] * (y0 - y1) / 127;
+        cv_rect(x, y1, 16, y0 - y1, rgbk(c, 40));
+        cv_rect(x, y0 - h, 16, h, rgbk(c, 256));
+        cv_rect(x - 10, clamp(y - 2, 0, 120), 36, 4, RGB(255, 255, 255));   /* (the fader) */
+    }
+    cv_blit(0, 32);
+    cv_begin(240, 84, C_BG);
+    for (i = 0; i < 4u; i++) {
+        const fdest_t *f = &FBANK[ui.fbank].f[i];
+        char b[8];
+        fmt_int(b, fd_get(f));
+        text_c(60 * (int32_t)i + 30, 0, &FONT_S, f->name, rgbk(VCOL[FCOL[i]], 230));
+        text_c(60 * (int32_t)i + 30, 16, &FONT_L, b, rgbk(VCOL[FCOL[i]], 256));
+    }
+    for (i = 0; i < NFBANK; i++) {                       /* the top pads: one bank each */
+        char a[2] = {FBANK[i].name[0], 0};
+        int32_t x = COLW * (int32_t)i + 2;
+        cv_rect(x, 56, COLW - 4, 26, i == ui.fbank ? RGB(255, 255, 255) : rgbk(VCOL[i], 150));
+        text_c(x + (COLW - 4) / 2, 61, &FONT_S, a, RGB(0, 0, 0));
+    }
+    text_c(210, 61, &FONT_S, "< >", RGB(150, 140, 190));
+    cv_blit(0, 156);
+}
+
 /* ------------------------------------------------------------- a dialog --- */
 static void dialog_screen(void)
 {
@@ -425,7 +462,7 @@ static const char *help_line(uint32_t p, uint32_t i, char *b, uint32_t n)
         {"HOME:", "K1-K8 PITCH", "MENU:", "KNOB=COLUMN", "2 CHOICES:", "THE PADS"},
         {0, 0, 0, 0, 0, 0},
         {0, 0, "KNOBB  PRESETS", "PATCH  HOME", "PATCH+ SETUP", "< >    PAGE"},
-        {"PLAY  FREE", "REC   HOLD", "OCT   TRANSP", "FADERB FX", "KNOBB+ HELP", ""},
+        {"PLAY  FREE", "REC   HOLD", "OCT   TRANSP", "FADERB BANKS", "KNOBB+ HELP", ""},
         {0, 0, 0, 0, "PITCH BEND", "MOD  CLOSE"}};
     if (i == 0xFFu)
         return T[p];
@@ -434,7 +471,7 @@ static const char *help_line(uint32_t p, uint32_t i, char *b, uint32_t n)
     if (p == 5u) {                                       /* the faders */
         str_cpy(b, "F1 ", n);
         b[1] = (char)('1' + i);
-        str_cat(b, FADER_NAME[i], n);
+        str_cat(b, FBANK[ui.fbank].f[i].name, n);
         return b;
     }
     {   /* the menus: button, name */
@@ -526,7 +563,9 @@ static void draw_frame(void)
     if (ui.dirty || now - t_rest >= 120u) {
         ui.dirty = 0;
         t_rest = now;
-        if (ui.menu == MN_PRESETS) {
+        if (ui.menu == MN_FADERS)
+            faders_screen();
+        else if (ui.menu == MN_PRESETS) {
             presets_screen();
             if (ui.dlg)
                 dialog_screen();
