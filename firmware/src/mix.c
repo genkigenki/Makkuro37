@@ -142,14 +142,14 @@ static void synth_block(int32_t *out, uint32_t n)
         bus_l[i] = (bus_l[i] * (m >> 4) * 3) >> 12; /* (x 1.5: a few drones already sound full; the limiter */
         bus_r[i] = (bus_r[i] * (m >> 4) * 3) >> 12; /* keeps many in hand) */
     }
-    {   /* the dual filter (R follows L with LINK, a hair apart), then the effector */
+    {   /* the filter, stereo (R a hair apart and its LFO a quarter on), then the effector */
         int32_t src = pt.g[G_FCVSRC], cv = src ? (modv[src % MS_N] * pt.g[G_FCVAMT]) >> 12 : 0;
-        int32_t link = pt.g[G_FLINK], fd = pt.g[G_FMD] * pt.g[G_FMD] / 40, rw = (joy_y * 50) >> 15;
+        int32_t fd = pt.g[G_FMD] * pt.g[G_FMD] / 40, rw = (joy_y * 50) >> 15;
         static uint32_t fph;
         fph += LFO_A[pt.g[G_FMR] & 127] * 2u;   /* the filters' LFO: R a quarter on */
         flt_tick(&flt[0], pt.g[G_FFL], pt.g[G_FRL] + rw, cv + ((SINE[fph >> 22] * fd) >> 15));
-        flt_tick(&flt[1], link ? pt.g[G_FFL] : pt.g[G_FFR], (link ? pt.g[G_FRL] : pt.g[G_FRR]) + rw,
-                 cv + (link ? 6 : 0) + ((SINE[(fph + 0x40000000u) >> 22] * fd) >> 15));   /* (the mod wheel: + res) */
+        flt_tick(&flt[1], pt.g[G_FFL], pt.g[G_FRL] + rw,
+                 cv + 6 + ((SINE[(fph + 0x40000000u) >> 22] * fd) >> 15));   /* (the mod wheel: + res) */
         flt_run(&flt[0], bus_l, n);
         flt_run(&flt[1], bus_r, n);
         fx_run(bus_l, bus_r, n);

@@ -62,7 +62,7 @@ column 1-8, and a setting with two choices sits on the column's pads. The full m
 | MOTION | detune | detune rate | mod amount | analog |
 | SWELL | attack | release | glide | vibrato |
 
-A fader sets its parameter when you move it; switching banks changes nothing. The effects on / off: **FX** menu, page FILTER, pad 8.
+The banks are shortcuts: every fader parameter is also in a menu. A fader sets its parameter when you move it; switching banks changes nothing.
 
 ## 4. Menus
 
@@ -131,8 +131,8 @@ A fader sets its parameter when you move it; switching banks changes nothing. Th
 3. **Hold** a dark pad for one second. Your sound is saved there.
 4. Hold a lit pad: the screen asks first. **Green** pad (bottom right) = replace, **red** = cancel.
 5. Tap a lit pad to load your sound.
-6. Hold **PATCH** for SETUP: pad light, USB console, output LINE or SPEAKER, master volume, analog drift,
-   width, tape.
+6. Hold **PATCH** for SETUP: pad light, USB console, output LINE or SPEAKER. Master volume, width, tape and
+   analog drift are in **GLOBE** MIX, page OUTPUT.
 
 ---
 
@@ -143,7 +143,7 @@ A fader sets its parameter when you move it; switching banks changes nothing. Th
 | ![](img/screen-home.png) home | ![](img/screen-presets-2.png) PRESETS | ![](img/screen-dialog-save.png) replace a saved one |
 | ![](img/screen-menu-sound-1.png) SOUND: WAVE | ![](img/screen-menu-sound-2.png) SOUND: VOICE 1 | ![](img/screen-menu-sound-4.png) SOUND: VOICE 3 (noise) |
 | ![](img/screen-menu-sound-5.png) SOUND: VOICE 4 (VCO) | ![](img/screen-menu-motion-1.png) MOTION: DETUNE | ![](img/screen-menu-mix-1.png) MIX: VOLUME |
-| ![](img/screen-menu-effects-1.png) EFFECTS | ![](img/screen-menu-effects-2.png) EFFECTS: FILTER | ![](img/screen-menu-tuning-1.png) TUNING |
+| ![](img/screen-menu-effects-1.png) EFFECTS: FX L | ![](img/screen-menu-effects-3.png) EFFECTS: FILTER | ![](img/screen-menu-tuning-1.png) TUNING |
 | ![](img/screen-menu-motion-8.png) MOTION: LFO | ![](img/screen-menu-keys-1.png) KEYS | ![](img/screen-menu-setup-1.png) SETUP |
 | ![](img/screen-help-1.png) HELP: pads | ![](img/screen-help-3.png) HELP: menus | ![](img/screen-help-6.png) HELP: faders |
 

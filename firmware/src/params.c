@@ -15,12 +15,12 @@ static const char *const N_RANGE[2] = {"LO", "HI"};
 static const char *const N_MULT[2] = {"X1", "X10"};
 static const char *const N_NMODE[4] = {"DRONE", "FM", "AM", "FM+AM"};
 static const char *const N_SHCLK[4] = {"MOD", "LFO A", "LFO B", "PULSER"};
-static const char *const N_WAVE[6] = {"SAW", "PULSE", "TRI", "SINE", "SAW<>", "SIN<>TRI"};
+static const char *const N_WAVE[7] = {"SAW", "PULSE", "TRI", "SINE", "SAW<>", "SIN<>TRI", "NOISE"};
 static const char *const N_OCT[8] = {"LO", "64'", "32'", "16'", "8'", "4'", "2'", "1'"};
 static const char *const N_EG[3] = {"GATE", "HOLD", "LOOP"};
 static const char *const N_TSET[TS_N] = {"12-TET", "JUST", "PYTHAG", "24-TET", "RAST", "SLENDRO", "PELOG"};
 static const char *const N_KEYS[3] = {"SINGLE", "DUO", "SPLIT"};
-static const char *const N_CWAVE[4] = {"SAW", "SQUARE", "TRI", "SINE"};
+static const char *const N_CWAVE[5] = {"SAW", "SQUARE", "TRI", "SINE", "NOISE"};
 static const char *const N_ARP[6] = {"OFF", "UP", "DOWN", "UP-DN", "RANDOM", "SEQ"};
 static const char *const N_STAGES[3] = {"3", "4", "5"};
 static const char *const N_FX[FX_N] = {"OFF", "ROOM", "DELAY", "SHIMMER", "CHORUS", "PHASER", "CRUSH", "RING", "FREEZE",
@@ -40,7 +40,7 @@ static const pdesc_t VDESC[3][VP_N] = {
         {"MOD SRC", 0, MS_N - 1, MS_DRIFT, F_ENUM, N_MSRC}, {"MOD AMT", 0, 127, 0, F_NUM, 0},
         {"GATE", 0, GS_N - 1, GS_PAD, F_ENUM, N_GSRC}, {"VOLUME", 0, 127, 96, F_NUM, 0},
         {"PAN", 0, 127, 64, F_PAN, 0}, {"TONE", 0, 127, 84, F_NUM, 0},
-        {"PITCH", -2400, 2400, 0, F_CENTS, 0}, {"WAVE", 0, 3, CW_SAW, F_ENUM, N_CWAVE},
+        {"PITCH", -2400, 2400, 0, F_CENTS, 0}, {"WAVE", 0, 4, CW_SAW, F_ENUM, N_CWAVE},
         {"DETUNE", 0, 127, 0, F_NUM, 0}, {"DTN RATE", 0, 127, 50, F_NUM, 0}},
     [VT_NOISE] = {
         {"PITCH", 0, 127, 70, F_NUM, 0}, {"RANGE", 0, 1, 0, F_ENUM, N_RANGE},
@@ -52,10 +52,10 @@ static const pdesc_t VDESC[3][VP_N] = {
         {"MOD SRC", 0, MS_N - 1, MS_NONE, F_ENUM, N_MSRC}, {"MOD AMT", 0, 127, 0, F_NUM, 0},
         {"GATE", 0, GS_N - 1, GS_PAD, F_ENUM, N_GSRC}, {"VOLUME", 0, 127, 80, F_NUM, 0},
         {"PAN", 0, 127, 64, F_PAN, 0}, {"TONE", 0, 127, 76, F_NUM, 0},
-        {"PITCH", -2400, 2400, 0, F_CENTS, 0}, {"WAVE", 0, 3, CW_SQUARE, F_ENUM, N_CWAVE},
+        {"PITCH", -2400, 2400, 0, F_CENTS, 0}, {"WAVE", 0, 4, CW_SQUARE, F_ENUM, N_CWAVE},
         {"DETUNE", 0, 127, 0, F_NUM, 0}, {"DTN RATE", 0, 127, 50, F_NUM, 0}},
     [VT_VCO] = {
-        {"WAVE", 0, 5, W_SAW, F_ENUM, N_WAVE}, {"SHAPE", 0, 127, 64, F_NUM, 0},
+        {"WAVE", 0, 6, W_SAW, F_ENUM, N_WAVE}, {"SHAPE", 0, 127, 64, F_NUM, 0},
         {"OCTAVE", 0, 7, 4, F_ENUM, N_OCT}, {"TUNE", -600, 600, 0, F_CENTS, 0},
         {"FM", 0, 127, 0, F_NUM, 0}, {"SYNC", 0, 1, 0, F_ONOFF, 0},
         {"DECAY", 0, 127, 70, F_NUM, 0}, {"SUSTAIN", 0, 127, 100, F_NUM, 0},
@@ -91,8 +91,8 @@ static const pdesc_t GDESC[G_COUNT] = {
     [G_STAGES] = {"STAGES", 0, 2, 2, F_ENUM, N_STAGES},
     [G_PULSER] = {"PULSER", 0, 127, 50, F_NUM, 0},
     [G_RUN] = {"RUN", 0, 1, 0, F_ONOFF, 0},
-    [G_FFL] = {"FREQ L", 0, 127, 127, F_NUM, 0},           /* open: the mod wheel closes it (a dark swell) */
-    [G_FRL] = {"RES L", 0, 127, 0, F_NUM, 0},
+    [G_FFL] = {"CUTOFF", 0, 127, 127, F_NUM, 0},           /* open: the mod wheel closes it (a dark swell) */
+    [G_FRL] = {"RESO", 0, 127, 0, F_NUM, 0},
     [G_FFR] = {"FREQ R", 0, 127, 127, F_NUM, 0},
     [G_FRR] = {"RES R", 0, 127, 0, F_NUM, 0},
     [G_FLINK] = {"LINK", 0, 1, 0, F_ONOFF, 0},
@@ -110,7 +110,7 @@ static const pdesc_t GDESC[G_COUNT] = {
     [G_BLEND] = {"BLEND L", 0, 127, 48, F_NUM, 0},
     [G_DRIFT] = {"ANALOG", 0, 127, 40, F_NUM, 0},
     [G_WIDTH] = {"WIDTH", 0, 60, 24, F_NUM, 0},
-    [G_FMODE] = {"FILTER", 0, 3, 0, F_ENUM, N_FMODE},
+    [G_FMODE] = {"MODE", 0, 3, 0, F_ENUM, N_FMODE},
     [G_ARP] = {"ARP", 0, 5, AR_OFF, F_ENUM, N_ARP},
     [G_ARATE] = {"RATE", 0, 127, 70, F_NUM, 0},
     [G_AOCT] = {"OCTAVES", 1, 3, 1, F_NUM, 0},
@@ -120,8 +120,8 @@ static const pdesc_t GDESC[G_COUNT] = {
     [G_BLENDR] = {"BLEND R", 0, 127, 48, F_NUM, 0},
     [G_AUTOGATE] = {"AUTO", 0, 255, 0x63, F_NUM, 0},   /* (four awake: 1 2 6 7) */
     [G_TAPE] = {"TAPE", 0, 127, 24, F_NUM, 0},
-    [G_FMR] = {"FMOD RATE", 0, 127, 30, F_NUM, 0},
-    [G_FMD] = {"FMOD DEPTH", 0, 127, 0, F_NUM, 0},
+    [G_FMR] = {"M RATE", 0, 127, 30, F_NUM, 0},
+    [G_FMD] = {"MOVE", 0, 127, 0, F_NUM, 0},
 };
 
 /* the power-on sound: four chords on the classic voices, a siren and a wind, two VCOs */

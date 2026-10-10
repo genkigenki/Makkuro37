@@ -15,7 +15,7 @@ enum { B_KNOBBANK, B_FADERBANK, B_LEFT, B_RIGHT, B_OCTDN, B_OCTUP, B_ARP, B_REPE
 /* ------------------------------------------------------------- the table --- */
 #define NO 0xFFu
 enum { PG_ROW, PG_GLOB, PG_VOICE };                    /* a row of one voice parameter / 8 globals / one voice */
-enum { X_LIGHT = 0xE0, X_CONSOLE, X_OUTPUT, X_LOOP, X_STEPREC, X_FXON };   /* (PG_GLOB: settings and pad actions) */
+enum { X_LIGHT = 0xE0, X_CONSOLE, X_OUTPUT, X_LOOP, X_STEPREC };   /* (PG_GLOB: settings and pad actions) */
 typedef struct {
     const char *name;
     uint8_t kind;
@@ -39,12 +39,13 @@ static const page_t PAGES[] = {
     ROW3("MOD SRC", VP_MSRC), ROW3("MOD AMT", VP_MAMT),
     ROW("SUB", CL_SUB, NO, VC_SUB), ROW("SUB DIV", CL_SUBDIV, NO, NO),
     ROW("S&H AMT", NO, NZ_SHAMT, NO), ROW("S&H CLK", NO, NZ_SHCLK, NO),
-    {"LFO", PG_GLOB, {G_LARATE, G_LAWAVE, G_LBRATE, G_LBWAVE, G_FMR, NO, NO, NO}, NO, NO},
+    {"LFO", PG_GLOB, {G_LARATE, G_LAWAVE, G_LBRATE, G_LBWAVE, NO, NO, NO, NO}, NO, NO},
     /* TUNING (SCALE) */
     {"TUNING", PG_GLOB, {G_TSET, G_ROOT, G_SNAP, G_FINE, NO, NO, NO, NO}, NO, NO},
     /* EFFECTS (FX) */
-    {"FX L  R", PG_GLOB, {G_FXL, G_FXLX, G_FXLY, G_FXLZ, G_FXR, G_FXRX, G_FXRY, G_FXRZ}, NO, NO},
-    {"FILTER", PG_GLOB, {G_FMODE, G_FDRIVE, G_FCVSRC, G_FCVAMT, NO, NO, NO, X_FXON}, NO, NO},
+    {"FX L", PG_GLOB, {G_FXL, G_FXLX, G_FXLY, G_FXLZ, G_BLEND, NO, NO, NO}, NO, NO},
+    {"FX R", PG_GLOB, {G_FXR, G_FXRX, G_FXRY, G_FXRZ, G_BLENDR, NO, NO, NO}, NO, NO},
+    {"FILTER", PG_GLOB, {G_FMODE, G_FFL, G_FRL, G_FDRIVE, G_FMD, G_FMR, G_FCVSRC, G_FCVAMT}, NO, NO},
     /* SEQUENCER (SEQ) */
     {"STEPS", PG_GLOB, {G_SEQ1, G_SEQ2, G_SEQ3, G_SEQ4, G_SEQ5, G_STAGES, G_PULSER, G_RUN}, NO, G_SGATES},
     {"LOOP", PG_GLOB, {X_LOOP, NO, NO, NO, NO, NO, NO, NO}, NO, NO},
@@ -53,8 +54,9 @@ static const page_t PAGES[] = {
     {"STEP REC", PG_GLOB, {X_STEPREC, NO, NO, NO, NO, NO, NO, NO}, NO, NO},
     /* MIX (GLOBE) */
     ROW3("VOLUME", VP_VOL), ROW3("PAN", VP_PAN), ROW3("TONE", VP_TONE),
-    /* SETUP (PATCH held) */
-    {"SETUP", PG_GLOB, {X_LIGHT, X_CONSOLE, X_OUTPUT, G_MASTER, G_DRIFT, G_WIDTH, G_TAPE, NO}, NO, NO},
+    {"OUTPUT", PG_GLOB, {G_MASTER, G_WIDTH, G_TAPE, G_DRIFT, NO, NO, NO, NO}, NO, NO},
+    /* SETUP (PATCH held): the device, not the sound */
+    {"SETUP", PG_GLOB, {X_LIGHT, X_CONSOLE, X_OUTPUT, NO, NO, NO, NO, NO}, NO, NO},
     {"JOYSTICK", PG_GLOB, {G_JXOFS, G_JYOFS, NO, NO, NO, NO, NO, NO}, NO, NO},
 };
 typedef struct { const char *name, *button; uint8_t btn, first, n; } menu_t;
@@ -63,21 +65,21 @@ static const menu_t MENUS[MN_N] = {
     [MN_ENV] = {"ENVELOPE", "CHORD", B_CHORD, 9, 6},
     [MN_MOTION] = {"MOTION", "REPEAT", B_REPEAT, 15, 8},
     [MN_TUNING] = {"TUNING", "SCALE", B_SCALE, 23, 1},
-    [MN_FX] = {"EFFECTS", "FX", B_FX, 24, 2},
-    [MN_SEQ] = {"SEQUENCER", "SEQ", B_SEQ, 26, 2},
-    [MN_KEYS] = {"KEYS", "ARP", B_ARP, 28, 2},
-    [MN_MIX] = {"MIX", "GLOBE", B_GLOBE, 30, 3},
-    [MN_SETUP] = {"SETUP", "PATCH+", B_PATCH, 33, 2},
+    [MN_FX] = {"EFFECTS", "FX", B_FX, 24, 3},
+    [MN_SEQ] = {"SEQUENCER", "SEQ", B_SEQ, 27, 2},
+    [MN_KEYS] = {"KEYS", "ARP", B_ARP, 29, 2},
+    [MN_MIX] = {"MIX", "GLOBE", B_GLOBE, 31, 4},
+    [MN_SETUP] = {"SETUP", "PATCH+", B_PATCH, 35, 2},
 };
-_Static_assert(sizeof PAGES / sizeof PAGES[0] == 35u, "MENUS: the pages");
-/* the fader banks (FADER BANK, < > or the top pads): four sound movers each, a global pair (L, R) or one voice
- * parameter on a group of voices */
+_Static_assert(sizeof PAGES / sizeof PAGES[0] == 37u, "MENUS: the pages");
+/* the fader banks (FADER BANK, < > or the top pads): shortcuts, four menu parameters each; a global (a pair: L
+ * and R) or one voice parameter on a group of voices */
 typedef struct { const char *name; uint8_t g, id, b; } fdest_t;   /* g: globals id and b (NO: none); else id on mask b */
 typedef struct { const char *name; fdest_t f[4]; } fbank_t;
 #define FG(n, a, b) {n, 1, a, b}
 #define FV(n, k, m) {n, 0, k, m}
 static const fbank_t FBANK[] = {
-    {"FILTER", {FG("CUTOFF", G_FFL, G_FFR), FG("RESO", G_FRL, G_FRR), FG("MOVE", G_FMD, NO), FG("DRIVE", G_FDRIVE, NO)}},
+    {"FILTER", {FG("CUTOFF", G_FFL, NO), FG("RESO", G_FRL, NO), FG("MOVE", G_FMD, NO), FG("DRIVE", G_FDRIVE, NO)}},
     {"SPACE", {FG("SPACE", G_BLEND, G_BLENDR), FG("FX X", G_FXLX, G_FXRX), FG("FX Y", G_FXLY, G_FXRY),
                FG("TAPE", G_TAPE, NO)}},
     {"VOICES", {FV("1+2", VP_VOL, 0x03), FV("3+8", VP_VOL, 0x84), FV("4+5", VP_VOL, 0x18), FV("6+7", VP_VOL, 0x60)}},
@@ -166,7 +168,7 @@ static const page_t *page_cur(void) { return &PAGES[MENUS[ui.menu].first + ui.pa
 
 static void menu_build(void)
 {
-    static const uint8_t VC[8] = {VC_WAVE, VC_SHAPE, VC_OCT, VC_TUNE, VC_FM, VC_SYNC, VC_SUB, NO};
+    static const uint8_t VC[8] = {VC_SHAPE, VC_OCT, VC_TUNE, VC_FM, VC_SYNC, NO, NO, NO};   /* (WAVE, SUB: their rows) */
     const page_t *pg;
     uint32_t k, v;
     for (k = 0; k < 8u; k++) {
@@ -219,9 +221,9 @@ static const pdesc_t *it_desc(const item_t *it)
 {
     static const char *const N_OUT[2] = {"LINE", "SPEAKER"};
     static const char *const N_LOOP[2] = {"REC", "STOP"};
-    static const pdesc_t X[6] = {{"LIGHT", 1, 8, 4, F_NUM, 0}, {"CONSOLE", 0, 1, 1, F_ONOFF, 0},
+    static const pdesc_t X[5] = {{"LIGHT", 1, 8, 4, F_NUM, 0}, {"CONSOLE", 0, 1, 1, F_ONOFF, 0},
                                  {"OUTPUT", 0, 1, 0, F_ENUM, N_OUT}, {"LOOP", 0, 1, 0, F_ENUM, N_LOOP},
-                                 {"STEP REC", 0, 1, 0, F_ENUM, N_LOOP}, {"FX", 0, 1, 1, F_ONOFF, 0}};
+                                 {"STEP REC", 0, 1, 0, F_ENUM, N_LOOP}};
     switch (it->kind) {
     case IK_V: return &VDESC[VTYPE[it->voice]][it->id];
     case IK_G: return &GDESC[it->id];
@@ -241,7 +243,6 @@ static int32_t it_get(const item_t *it)
         case X_CONSOLE: return settings.console;
         case X_OUTPUT: return settings.speaker;
         case X_LOOP: return ui.mo.state == MO_REC || ui.mo.state == MO_LOOP ? 0 : 1;
-        case X_FXON: return !fx_mute;
         default: return kb.rec ? 0 : 1;
         }
     default: return 0;
@@ -353,8 +354,6 @@ static void it_set(const item_t *it, int32_t v)          /* a new value (clamped
         settings.console = (uint8_t)v;
     else if (it->id == X_OUTPUT)
         settings.speaker = (uint8_t)v;
-    else if (it->id == X_FXON)
-        fx_mute = v ? 0 : 3;
     ui.dirty = 1;
 }
 
@@ -561,11 +560,7 @@ static void pitch_turn(uint32_t v, int32_t s)
 
 static void gate_press(uint32_t v)
 {
-    if (VTYPE[v] == VT_VCO) {                           /* 4 / 5: hold the last key's note (keys only) */
-        if (!kb.played) {
-            ui_say("PLAY A KEY", 0);
-            return;
-        }
+    if (VTYPE[v] == VT_VCO) {                           /* 4 / 5: hold the last key's note */
         kb.padhold[v - 3u] ^= 1u;
         return;
     }
@@ -1089,6 +1084,9 @@ static void ui_init(void)
         ui.fad_last[i] = 0xFF;
     for (i = 0; i < NV; i++)
         ui.fkey[i] = -128, ui.forder[i] = (uint8_t)i;
+    kb.cents[0] = kb_cents(12);                         /* the VCOs' note before a key: C3, G3 */
+    kb.cents[1] = kb_cents(19);
+    kb.played = 1;
     ui.menu = MN_PRESETS;                               /* power-on: pick a preset */
     ui.page = 0;
     ui.pre_sel = ui.preset;

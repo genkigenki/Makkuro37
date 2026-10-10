@@ -135,8 +135,18 @@ static int32_t dtn_tick(vstate_t *s, const int16_t *p)   /* cents x 16 */
     return s->dtn;
 }
 
-/* the classic and noise voices' wave (WAVE): saw, square, triangle, sine */
-enum { CW_SAW, CW_SQUARE, CW_TRI, CW_SINE };
+/* the classic and noise voices' wave (WAVE): saw, square, triangle, sine, noise */
+enum { CW_SAW, CW_SQUARE, CW_TRI, CW_SINE, CW_NOISE };
+/* NOISE: a new random point every cycle of the generator, joined by lines: noise coloured by its pitch (low
+ * generators rumble, high ones hiss), so a chord of them is a chord of wind */
+static inline int32_t gnoise(vstate_t *s, uint32_t g, uint32_t ph, uint32_t inc)
+{
+    if (ph < inc) {
+        s->nr[g][0] = s->nr[g][1];
+        s->nr[g][1] = (int16_t)((int32_t)xorshift(&s->rnd) >> 16);
+    }
+    return s->nr[g][0] + (((s->nr[g][1] - s->nr[g][0]) * (int32_t)(ph >> 17)) >> 15);
+}
 static inline int32_t cwave(uint32_t w, uint32_t ph, uint32_t inc)
 {
     int32_t t;
@@ -207,6 +217,11 @@ static void classic_render(vstate_t *s, const int16_t *p, int32_t *o, int32_t *o
                     ph += inc;
                     x[i] += (saw(ph, inc) * k) >> 15;
                 }
+            else if (w == CW_NOISE)
+                for (i = 0; i < n; i++) {
+                    ph += inc;
+                    x[i] += (gnoise(s, g, ph, inc) * k) >> 15;
+                }
             else
                 for (i = 0; i < n; i++) {
                     ph += inc;
@@ -221,7 +236,7 @@ static void classic_render(vstate_t *s, const int16_t *p, int32_t *o, int32_t *o
         int32_t k = VNORM[act], l0 = s->last[0], l1 = s->last[1], l2 = s->last[2], l3 = s->last[3], l4 = s->last[4];
         for (i = 0; i < n; i++) {
             int32_t sa = 0, sb = 0;
-#define GEN(G, PREV, L, SUM)                                                                                if (s->inc[G]) {                                                                                    uint32_t inc = s->inc[G] + (uint32_t)((int32_t)(s->inc[G] >> 15) * ((PREV * fm) >> 15));                 s->ph[G] += inc;                                                                                L = cwave((uint32_t)p[VP_WAVE], s->ph[G], inc);                                                                         SUM += L;                                                                                   }
+#define GEN(G, PREV, L, SUM)                                                                                if (s->inc[G]) {                                                                                    uint32_t inc = s->inc[G] + (uint32_t)((int32_t)(s->inc[G] >> 15) * ((PREV * fm) >> 15));                 s->ph[G] += inc;                                                                                L = p[VP_WAVE] == CW_NOISE ? gnoise(s, G, s->ph[G], inc) : cwave((uint32_t)p[VP_WAVE], s->ph[G], inc);                                                                         SUM += L;                                                                                   }
             GEN(0, l4, l0, sa)
             GEN(1, l0, l1, sb)
             GEN(2, l1, l2, sa)
@@ -288,7 +303,7 @@ static void noise_render(vstate_t *s, const int16_t *p, int32_t *o, uint32_t n)
         }
         ph += inc;
         y = wv == CW_SQUARE ? (ph < 0x80000000u ? 32767 : -32767) + blep(ph, inc) - blep(ph + 0x80000000u, inc)
-                            : cwave(wv, ph, inc);
+            : wv == CW_NOISE ? gnoise(s, 0, ph, inc) : cwave(wv, ph, inc);
         y = (y * tone) >> 15;
         if (amm) {
             am += (((int32_t)(half ^ 1u) * 32767 - am) >> 5);
@@ -411,7 +426,7 @@ static void vco_render(int32_t *o4, int32_t *o5, uint32_t n)
     for (i = 0; i < n; i++) {
         uint32_t inc = ia + (uint32_t)((int32_t)(ia >> 14) * ((ya * fa) >> 15));   /* 4: feedback FM */
         pha += inc;
-        ya = vco_wave(a, wa, pha, inc);
+        ya = wa == W_NOISE ? gnoise(a, 0, pha, inc) : vco_wave(a, wa, pha, inc);
         if (on_a) {
             o4[i] += (ya * 26000) >> 15;
             if (sa) {                              /* the sub: a square an octave down */
@@ -424,7 +439,7 @@ static void vco_render(int32_t *o4, int32_t *o5, uint32_t n)
             phb += inc;
             if (sync && pha < ia)
                 phb = pha;                         /* hard sync: 5 restarts with 4 */
-            yb = vco_wave(b, wb, phb, inc);
+            yb = wb == W_NOISE ? gnoise(b, 0, phb, inc) : vco_wave(b, wb, phb, inc);
             o5[i] += (yb * 26000) >> 15;
             if (sb) {
                 b->sph += ib >> 1;

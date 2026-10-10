@@ -8,8 +8,8 @@ Generated from the firmware's menu table (tools/docs_img.sh). On every page knob
 |  |  | VOICE 1 | TUNE 1 (pads: on, mod) | TUNE 2 (pads: on, mod) | TUNE 3 (pads: on, mod) | TUNE 4 (pads: on, mod) | TUNE 5 (pads: on, mod) | VOLT |  |  |
 |  |  | VOICE 2 | TUNE 1 (pads: on, mod) | TUNE 2 (pads: on, mod) | TUNE 3 (pads: on, mod) | TUNE 4 (pads: on, mod) | TUNE 5 (pads: on, mod) | VOLT |  |  |
 |  |  | VOICE 3 | PITCH | RANGE (pads) | RATE | RATE X (pads) | FM AMT | DIVIDER | MODE | NOISE |
-|  |  | VOICE 4 | WAVE | SHAPE | OCTAVE | TUNE | FM |  | SUB |  |
-|  |  | VOICE 5 | WAVE | SHAPE | OCTAVE | TUNE | FM | SYNC (pads) | SUB |  |
+|  |  | VOICE 4 | SHAPE | OCTAVE | TUNE | FM |  |  |  |  |
+|  |  | VOICE 5 | SHAPE | OCTAVE | TUNE | FM | SYNC (pads) |  |  |  |
 |  |  | VOICE 6 | TUNE 1 (pads: on, mod) | TUNE 2 (pads: on, mod) | TUNE 3 (pads: on, mod) | TUNE 4 (pads: on, mod) | TUNE 5 (pads: on, mod) | VOLT |  |  |
 |  |  | VOICE 7 | TUNE 1 (pads: on, mod) | TUNE 2 (pads: on, mod) | TUNE 3 (pads: on, mod) | TUNE 4 (pads: on, mod) | TUNE 5 (pads: on, mod) | VOLT |  |  |
 |  |  | VOICE 8 | PITCH | RANGE (pads) | RATE | RATE X (pads) | FM AMT | DIVIDER | MODE | NOISE |
@@ -26,10 +26,11 @@ Generated from the firmware's menu table (tools/docs_img.sh). On every page knob
 |  |  | SUB DIV | SUB DIV | SUB DIV |  |  |  | SUB DIV | SUB DIV |  |
 |  |  | S&H AMT |  |  | S&H AMT |  |  |  |  | S&H AMT |
 |  |  | S&H CLK |  |  | S&H CLK |  |  |  |  | S&H CLK |
-|  |  | LFO | A RATE | A WAVE | B RATE | B WAVE | FMOD RATE |  |  |  |
+|  |  | LFO | A RATE | A WAVE | B RATE | B WAVE |  |  |  |  |
 | SCALE | TUNING | TUNING | TUNING | ROOT | SNAP (pads) | FINE |  |  |  |  |
-| FX | EFFECTS | FX L  R | FX L | L X | L Y | L Z | FX R | R X | R Y | R Z |
-|  |  | FILTER | FILTER | DRIVE | CV SRC | CV AMT |  |  |  | FX (pads) |
+| FX | EFFECTS | FX L | FX L | L X | L Y | L Z | BLEND L |  |  |  |
+|  |  | FX R | FX R | R X | R Y | R Z | BLEND R |  |  |  |
+|  |  | FILTER | MODE | CUTOFF | RESO | DRIVE | MOVE | M RATE | CV SRC | CV AMT |
 | SEQ | SEQUENCER | STEPS | STEP 1 (pad: on) | STEP 2 (pad: on) | STEP 3 (pad: on) | STEP 4 (pad: on) | STEP 5 (pad: on) | STAGES | PULSER | RUN (pads) |
 |  |  | LOOP | LOOP (pads) |  |  |  |  |  |  |  |
 | ARP | KEYS | KEYS | KEYS | ARP | RATE | OCTAVES | LATCH (pads) | GLIDE | VIBRATO | VIB RATE |
@@ -37,7 +38,8 @@ Generated from the firmware's menu table (tools/docs_img.sh). On every page knob
 | GLOBE | MIX | VOLUME | VOLUME | VOLUME | VOLUME | VOLUME | VOLUME | VOLUME | VOLUME | VOLUME |
 |  |  | PAN | PAN | PAN | PAN | PAN | PAN | PAN | PAN | PAN |
 |  |  | TONE | TONE | TONE | TONE | TONE | TONE | TONE | TONE | TONE |
-| PATCH+ | SETUP | SETUP | LIGHT | CONSOLE (pads) | OUTPUT (pads) | MASTER | ANALOG | WIDTH | TAPE |  |
+|  |  | OUTPUT | MASTER | WIDTH | TAPE | ANALOG |  |  |  |  |
+| PATCH+ | SETUP | SETUP | LIGHT | CONSOLE (pads) | OUTPUT (pads) |  |  |  |  |  |
 |  |  | JOYSTICK | X OFFS | Y OFFS |  |  |  |  |  |  |
 
 FADER BANK: the banks (< > or top pads 1-6). A fader sets its parameter when it moves.

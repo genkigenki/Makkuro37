@@ -17,7 +17,7 @@ enum { NZ_PITCH = VP_T0, NZ_RANGE, NZ_RATE, NZ_MULT, NZ_FMAMT, NZ_DIV, NZ_MODE, 
 enum { NM_DRONE, NM_FM, NM_AM, NM_FMAM };
 /* VCO: AS3340-like, six waves */
 enum { VC_WAVE = VP_T0, VC_SHAPE, VC_OCT, VC_TUNE, VC_FM, VC_SYNC, VC_DEC, VC_SUS, VC_EG, VC_SUB };
-enum { W_SAW, W_PULSE, W_TRI, W_SINE, W_SAWMORPH, W_SINTRI };
+enum { W_SAW, W_PULSE, W_TRI, W_SINE, W_SAWMORPH, W_SINTRI, W_NOISE };
 enum { EG_NORM, EG_HOLD, EG_LOOP };
 
 /* modulation sources (VP_MSRC, filter CV, ...) and gate sources (VP_GSRC) */
@@ -28,7 +28,7 @@ enum {                          /* global parameters */
     G_MASTER, G_TSET, G_ROOT, G_SNAP, G_FINE, G_GLIDE, G_KEYS,
     G_LARATE, G_LAWAVE, G_LBRATE, G_LBWAVE, G_JXOFS, G_JYOFS,
     G_SEQ1, G_SEQ2, G_SEQ3, G_SEQ4, G_SEQ5, G_SGATES, G_STAGES, G_PULSER, G_RUN,
-    G_FFL, G_FRL, G_FFR, G_FRR, G_FLINK, G_FDRIVE, G_FCVSRC, G_FCVAMT,
+    G_FFL, G_FRL, G_FFR, G_FRR, G_FLINK, G_FDRIVE, G_FCVSRC, G_FCVAMT,   /* (FFR FRR FLINK: unused, one filter) */
     G_FXL, G_FXR, G_FXLX, G_FXLY, G_FXLZ, G_FXRX, G_FXRY, G_FXRZ, G_BLEND,
     G_DRIFT, G_WIDTH, G_FMODE,  /* (appended: stored scenes keep their order) */
     G_ARP, G_ARATE, G_AOCT, G_ALATCH, G_VIBD, G_VIBR, G_BLENDR, G_AUTOGATE,
@@ -62,6 +62,7 @@ typedef struct {                /* run-time state of a voice (audio side) */
     int16_t mis[5], dr[5], dt[5];   /* analog: fixed mismatch, drift now, its aim (cents x 16) */
     int32_t lp[2][2];           /* the voice's tone low-pass (2 poles), per half */
     uint32_t rnd;               /* its own random numbers */
+    int16_t nr[5][2];           /* NOISE: each generator's last two random points */
     uint32_t sph;               /* the subharmonic's / sub-oscillator's phase */
     uint32_t dph;               /* the detune modulation's phase */
     int32_t dtn;                /* its value now, cents x 16 */

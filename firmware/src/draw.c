@@ -287,8 +287,9 @@ static void menu_columns(void)
             int32_t yy, ly = 0;                          /* WAVE: the wave itself, down the column */
             for (yy = 0; yy < 96; yy++) {
                 uint32_t ph = (uint32_t)yy * 0x5555555u;   /* (two periods) */
-                int32_t s2 = it->id == VP_WAVE && VTYPE[it->voice] != VT_VCO ? cwave((uint32_t)v, ph, 0)
-                                                                              : wave_y((uint32_t)v, ph, pt.v[it->voice][VC_SHAPE]);
+                int vco = !(it->id == VP_WAVE && VTYPE[it->voice] != VT_VCO);
+                int32_t s2 = (vco ? v == W_NOISE : v == CW_NOISE) ? (int32_t)(hash3(yy / 4, k, 7) & 0xFFFFu) - 32768
+                             : vco ? wave_y((uint32_t)v, ph, pt.v[it->voice][VC_SHAPE]) : cwave((uint32_t)v, ph, 0);
                 int32_t xx = x + 15 + (s2 * 11 >> 15);
                 if (yy)
                     cv_thick(x + 15 + ly, 10 + yy - 1, xx, 10 + yy, c);
