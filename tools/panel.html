@@ -25,7 +25,7 @@ add("screen", "screen", 300, 222, 124, 115, CY, "SCREEN");
   .forEach(([id, n], i) => add(id, "btn", i & 1 ? 323 : 270, 323 + (i >> 1) * 27, 48, 22, CY, n));
 for (let i = 0; i < 8; i++) add("k" + (i + 1), "knob", 453 + i * 94, 197, 60, 60, COL[i], "K" + (i + 1));
 for (let i = 0; i < 16; i++) add("p" + (i + 1), "pad", 453 + (i & 7) * 94, i < 8 ? 277 : 348, 74, 56, COL[i & 7],
-  i < 8 ? String(i + 1) : ["1", "2", "3", "4", "5", "P", "H", "C"][i - 8]);
+  i < 8 ? String(i + 1) : ["KB", "", "", "", "", "P", "H", "C"][i - 8]);
 for (let j = 0; j < 4; j++) add("f" + (j + 1), "fader", 1222 + j * 96, 242, 75, 125, CY, "F" + (j + 1));
 const SBX = [1227, 1285, 1342, 1400, 1457, 1514];
 [["arp", "ARP"], ["repeat", "NOTE REPEAT"], ["scale", "SCALE"], ["chord", "CHORD"], ["globe", "GLOBE"], ["bt", "BT"],
