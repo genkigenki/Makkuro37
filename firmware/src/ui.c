@@ -669,8 +669,8 @@ static void pads_poll(void)
     int32_t e;
     while ((e = smk_pad_take()) >= 0) {
         uint32_t pad = (uint32_t)e >> 8, vel = (uint32_t)e & 255u;
-        if (ui.dlg) {                                   /* a question: green OK (16), red CANCEL (9) */
-            if (vel && (pad == 15u || pad == 8u))
+        if (ui.dlg) {                                   /* a question: green OK (16), red CANCEL (15) */
+            if (vel && (pad == 15u || pad == 14u))
                 dlg_answer(pad == 15u);
             continue;
         }
@@ -1010,7 +1010,7 @@ static void ui_leds(void)
     if (ui.dlg) {                                       /* a question: only red and green */
         for (v = 0; v < 16u; v++)
             padled_set(v, 0, 0, 0);
-        PAD(8, 255, 0, 0, 256);
+        PAD(14, 255, 0, 0, 256);
         PAD(15, 0, 255, 0, 256);
         return;
     }

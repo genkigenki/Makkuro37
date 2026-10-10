@@ -15,6 +15,10 @@
   header span { color: var(--dim); }
   .smk { margin: 0 auto 20px; width: 1120px; max-width: 100%; background: var(--panel); border: 1px solid var(--edge);
          border-radius: 14px; padding: 16px; display: grid; grid-template-columns: 500px 1fr; gap: 16px; }
+  .col { display: flex; flex-direction: column; gap: 10px; width: 500px; }
+  .knobs8 { display: grid; grid-template-columns: repeat(8, 60px); width: 480px; margin-left: 10px; }
+  .pads8 { display: grid; grid-template-columns: repeat(8, 60px); width: 480px; margin-left: 10px; row-gap: 6px; }
+  .pads8 .pad { height: 54px; margin: 0 4px; }
   #screen { width: 480px; height: 480px; image-rendering: pixelated; border: 10px solid #000; border-radius: 6px;
             background: #000; display: block; }
   .right { display: flex; flex-direction: column; gap: 14px; }
@@ -51,23 +55,26 @@
 <header><h1>MAKKURO37</h1><span>simulator · the firmware's engine and screen in the browser · KNOB BANK held = HELP</span>
   <span id="status"></span></header>
 <div class="smk">
-  <canvas id="screen" width="240" height="240"></canvas>
-  <div class="right">
-    <div class="knobs" id="knobs"></div>
-    <div class="buttons" id="buttons"></div>
+  <div class="col">                                <!-- as on the panel: K1..K8 above the 8 columns, the pads below -->
+    <div class="knobs8" id="knobs"></div>
+    <canvas id="screen" width="240" height="240"></canvas>
+    <div class="pads8" id="pads"></div>
   </div>
-  <div class="row2">
-    <div class="wheels">
-      <div><input class="vslider" id="pitch" type="range" min="450" max="630" value="540"><div class="lab">PITCH</div></div>
-      <div><input class="vslider" id="mod" type="range" min="0" max="130" value="0"><div class="lab">MOD</div></div>
+  <div class="right">
+    <div class="buttons" id="buttons"></div>
+    <div class="row2">
+      <div class="wheels">
+        <div><input class="vslider" id="pitch" type="range" min="450" max="630" value="540"><div class="lab">PITCH</div></div>
+        <div><input class="vslider" id="mod" type="range" min="0" max="130" value="0"><div class="lab">MOD</div></div>
+      </div>
+      <div class="faders" id="faders"></div>
     </div>
-    <div class="pads" id="pads"></div>
-    <div class="faders" id="faders"></div>
   </div>
   <div class="keys" id="keys"></div>
 </div>
-<div class="help">Mouse: pads (shift = soft hit), keys, knobs (drag up / down or scroll), buttons, wheels, faders.
-  Computer keyboard: 1–8 = top pads, A W S E D F T G Y H U J K = keys, Z / X = octave. A MIDI keyboard plays voices 4 + 5.</div>
+<div class="help">As on the SMK-37 Pro: K1..K8 sit above the screen's eight columns and the eight pad columns.
+  Mouse: pads (shift = soft hit), keys, knobs (drag up / down or scroll), buttons, wheels, faders.
+  Computer keyboard: 1–8 = top pads, A W S E D F T G Y H U J K = keys, Z / X = octave. A MIDI keyboard plays the keys.</div>
 <div id="start">click to start the sound</div>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -86,11 +93,12 @@ function drawFb(fb) {
 }
 
 // ---- knobs K1..K8 (HAL encoders 0..7)
-const KN = [["K1", "MASTER"], ["K2", "PAGE"], ["K3", "VOICE"], ["K4", "TUNING"], ["K5", ""], ["K6", ""], ["K7", ""], ["K8", ""]];
-const KC = ["#888", "#888", "#888", "#888", "#287cff", "#1ecc70", "#ffc618", "#ff621a"];
+const KN = [["K1", ""], ["K2", ""], ["K3", ""], ["K4", ""], ["K5", ""], ["K6", ""], ["K7", ""], ["K8", ""]];
+const KC = ["#ff4040", "#ff9614", "#ffe61e", "#46e646", "#14dcff", "#4678ff", "#aa5aff", "#ff5ad2"];   // the columns' colours
 KN.forEach(([n, f], e) => {
   const k = document.createElement("div");
   k.className = "knob";
+  k.style.margin = "0 auto";
   k.innerHTML = `<div class="dial" style="--c:${KC[e]}"></div><b>${n}</b><small>${f}</small>`;
   let ang = 0, y0 = null, acc = 0;
   const turn = (s) => { if (!s) return; ang += s * 12; k.firstChild.style.setProperty("--a", ang + "deg"); send({ type: "enc", e, steps: s }); };
@@ -103,10 +111,10 @@ KN.forEach(([n, f], e) => {
 });
 
 // ---- buttons (HAL ids) with what they do here
-const BTN = [["KNOB BANK", "FILTER / HELP"], ["FADER BANK", "faders A-D"], ["<", "voice"], [">", "voice"],
-  ["OCTAVE-", "keys"], ["OCTAVE+", "keys"], ["ARP", "VOICE · CHAOS"], ["NOTE REPEAT", "MUTE/MOD"], ["SCALE", "TUNING"],
-  ["CHORD", "ENV · HOLD ALL"], ["GLOBE", "MIX"], ["BT", "NOISE 3/8"], ["PATCH", "SCENES · setup"], ["PARA", "VCO 4/5"],
-  ["FX", "FX"], ["SEQ", "SEQ"], ["SEQ PLAY", "run"], ["SEQ REC", "LFO"]];
+const BTN = [["KNOB BANK", "HOME · held: HELP"], ["FADER BANK", "faders A / B"], ["<", "page"], [">", "page"],
+  ["OCTAVE-", "transpose"], ["OCTAVE+", "transpose"], ["ARP", "KEYS"], ["NOTE REPEAT", "MOD"], ["SCALE", "TUNING"],
+  ["CHORD", "ENV"], ["GLOBE", "MIX"], ["BT", "LFO"], ["PATCH", "PRESETS · setup"], ["PARA", "VOICE"],
+  ["FX", "FX"], ["SEQ", "SEQ"], ["SEQ PLAY", "FREE-PLAY"], ["SEQ REC", "HOLD"]];
 const ORDER = [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 8, 17, 15, 16, 14, 11, 13, 12];
 const btnEl = [];
 ORDER.forEach((b) => {
@@ -124,7 +132,7 @@ const padEl = [];
 for (let p = 0; p < 16; p++) {
   const el = document.createElement("div");
   el.className = "pad";
-  el.innerHTML = `<i>${p < 8 ? p + 1 : ["1", "2", "3", "4", "5", "P", "L", "R"][p - 8]}</i>`;
+  el.innerHTML = `<i>${p < 8 ? p + 1 : ["1", "2", "3", "4", "5", "P", "H", "C"][p - 8]}</i>`;
   el.addEventListener("pointerdown", (ev) => { el.setPointerCapture(ev.pointerId); send({ type: "pad", pad: p, vel: ev.shiftKey ? 40 : 110 }); });
   el.addEventListener("pointerup", () => send({ type: "pad", pad: p, vel: 0 }));
   padEl[p] = el;
@@ -203,8 +211,8 @@ $("start").addEventListener("click", async () => {
       else if (m.type === "ready") {
         $("start").remove();
         $("status").textContent = "running · " + ac.sampleRate + " Hz";
-        if (/demo/.test(location.search))             // (a test: three drones on, one held)
-          [0, 2, 5].forEach((p, i) => setTimeout(() => { send({ type: "pad", pad: p, vel: 110 });
+        if (/demo/.test(location.search))             // (a test: preset 1, OK)
+          [0, 15].forEach((p, i) => setTimeout(() => { send({ type: "pad", pad: p, vel: 110 });
             setTimeout(() => send({ type: "pad", pad: p, vel: 0 }), 80); }, 300 + i * 400));
       }
       else if (m.type === "error") $("start").textContent = "error: " + m.message;

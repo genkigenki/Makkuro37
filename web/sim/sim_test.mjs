@@ -21,13 +21,16 @@ function run(sec) {
   return (performance.now() - t0) / (sec * 1000);
 }
 run(0.5);
-check("silent at power-on", peak < 0.001);
+check("silent at power-on (the presets)", peak < 0.001);
+ex.sim_pad(0, 110); run(0.05); ex.sim_pad(0, 0);       // pick preset 1 (heard at once)
+ex.sim_pad(15, 110); run(0.05); ex.sim_pad(15, 0);     // green: OK, home
+for (const p of [0, 1, 5]) { ex.sim_pad(p, 110); run(0.05); ex.sim_pad(p, 0); run(0.05); }   // (toggles some off)
 for (const p of [0, 2, 5]) { ex.sim_pad(p, 110); run(0.05); ex.sim_pad(p, 0); run(0.05); }
-const load = run(3);
-check(`three drones sound (peak ${peak.toFixed(2)})`, peak > 0.1 && peak <= 1.0);
+const load = run(4);
+check(`drones sound (peak ${peak.toFixed(2)})`, peak > 0.1 && peak <= 1.0);
 const pads = new Uint32Array(ex.memory.buffer, ex.sim_pads(), 16);
-check("their pads light", [0, 2, 5].every((p) => Math.max(pads[p] >> 16 & 255, pads[p] >> 8 & 255, pads[p] & 255) > 0x18) &&
-      Math.max(pads[1] >> 16 & 255, pads[1] >> 8 & 255, pads[1] & 255) < 0x08);
+check("their pads light", [2, 5].every((p) => Math.max(pads[p] >> 16 & 255, pads[p] >> 8 & 255, pads[p] & 255) > 0x18) &&
+      Math.max(pads[3] >> 16 & 255, pads[3] >> 8 & 255, pads[3] & 255) < 0x08);
 const fb = new Uint16Array(ex.memory.buffer, ex.sim_fb(), 240 * 240);
 let lit = 0;
 for (let i = 0; i < 240 * 124; i++) if (fb[i] > 0x2000) lit++;

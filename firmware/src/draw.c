@@ -232,6 +232,22 @@ static void home_bottom(void)
     cv_blit(0, 156);
 }
 
+/* a VCO wave for the picture, Q15 */
+static int32_t wave_y(uint32_t w, uint32_t ph, int32_t shape)
+{
+    vstate_t t;
+    t.kv[VK_W] = clamp(shape * 258, 128, 32640);
+    t.kv[VK_KU] = (65535 << 6) / t.kv[VK_W];
+    t.kv[VK_KD] = (65535 << 6) / (32768 - t.kv[VK_W]);
+    t.kv[VK_SHAPE] = shape * 258;
+    t.kv[VK_PW] = (int32_t)(0x80000000u + (uint32_t)(shape - 64) * 0x1F00000u);
+    if (w == W_SAW)
+        return (int32_t)(ph >> 16) - 32768;
+    if (w == W_PULSE)
+        return ph < (uint32_t)t.kv[VK_PW] ? 26000 : -26000;
+    return vco_wave(&t, w, ph, 0);
+}
+
 /* ------------------------------------------------------------- menus: the eight columns --- */
 static void menu_header(uint32_t npages)
 {
@@ -257,8 +273,23 @@ static void menu_columns(void)
         uint16_t c = rgbk(VCOL[k], 256), dim = rgbk(VCOL[k], 70);
         if (it->kind == IK_NONE || !d)
             continue;
+        if (it->alt != 0xFF && ((ui.altmask >> k) & 1u))   /* a pair showing its second value: lighter */
+            c = RGB((VCOL[k][0] + 255) >> 1, (VCOL[k][1] + 255) >> 1, (VCOL[k][2] + 255) >> 1);
         cv_rect(x + 1, 0, COLW - 2, 3, c);              /* the column's colour, under its knob */
         v = it_get(it);
+        if (it->kind == IK_V && (it->id == VP_WAVE || (it->id == VC_WAVE && VTYPE[it->voice] == VT_VCO))) {
+            int32_t yy, ly = 0;                          /* WAVE: the wave itself, down the column */
+            for (yy = 0; yy < 96; yy++) {
+                uint32_t ph = (uint32_t)yy * 0x5555555u;   /* (two periods) */
+                int32_t s2 = it->id == VP_WAVE && VTYPE[it->voice] != VT_VCO ? cwave((uint32_t)v, ph, 0)
+                                                                              : wave_y((uint32_t)v, ph, pt.v[it->voice][VC_SHAPE]);
+                int32_t xx = x + 15 + (s2 * 11 >> 15);
+                if (yy)
+                    cv_thick(x + 15 + ly, 10 + yy - 1, xx, 10 + yy, c);
+                ly = xx - x - 15;
+            }
+            continue;
+        }
         if (it_binary(it)) {                             /* two pads: the lit one is the choice */
             int on = d->fmt == F_ONOFF ? v != 0 : v == d->min;
             cv_rect(x + 6, 20, 18, 18, on ? c : dim);
@@ -375,10 +406,10 @@ static void dialog_screen(void)
         q[5] = (char)('1' + ui.dlg_arg), q[6] = '?', q[7] = 0;
         text_c(120, 0, &FONT_L, q, RGB(255, 255, 255));
     }
-    cv_rect(2, 40, 40, 40, RGB(255, 40, 40));            /* red: bottom left pad, green: bottom right pad */
-    cv_rect(198, 40, 40, 40, RGB(40, 230, 70));
-    text_c(22, 44, &FONT_L, "X", RGB(0, 0, 0));
-    text_c(218, 44, &FONT_L, "OK", RGB(0, 0, 0));
+    cv_rect(COLW * 6 + 2, 40, COLW - 4, 40, RGB(255, 40, 40));   /* red: pad 15, green: pad 16 (under them) */
+    cv_rect(COLW * 7 + 2, 40, COLW - 4, 40, RGB(40, 230, 70));
+    text_c(COLW * 6 + COLW / 2, 44, &FONT_L, "X", RGB(0, 0, 0));
+    text_c(120, 44, &FONT_L, "OK?", RGB(160, 240, 170));
     cv_blit(0, 156);
 }
 
@@ -394,10 +425,10 @@ static void draw_help(void)
     static const char *const P[6][7] = {
         {"PADS", "", "", "", "TOP: VOICES", "BOTTOM: STEPS", "P HOLD CHAOS"},
         {"KNOBS", "HOME:", "K1-K8 PITCH", "MENU:", "KNOB=COLUMN", "2 CHOICES:", "THE PADS"},
-        {"BUTTONS", "ARP    KEYS", "REPEAT MOD", "SCALE  TUNING", "CHORD  ENV", "GLOBE  MIX", "BT     LFO"},
-        {"BUTTONS", "PARA   VOICE", "FX     FX", "SEQ    SEQ", "PATCH PRESET", "FADERB VOLUME", "KNOBB  HOME"},
-        {"MORE", "< >  PAGE", "OCT  TRANSP", "PLAY PULSER", "REC  LOOP", "PATCH+ SETUP", "KNOBB+ HELP"},
-        {"FADERS", "F1  FX L", "F2  FX R", "F3  SPACE", "F4  FILTER", "PITCH BEND", "MOD  SWEEP"}};
+        {"BUTTONS", "PARA   VOICE", "CHORD  ENV", "REPEAT MOD", "GLOBE  MIX", "SCALE  TUNING", "BT     LFO"},
+        {"BUTTONS", "SEQ    SEQ", "FX     FX", "ARP    KEYS", "PATCH PRESET", "KNOBB  HOME", "< >    PAGE"},
+        {"PLAY", "PLAY  FREE", "REC   HOLD", "OCT   TRANSP", "FADERB BANK", "PATCH+ SETUP", "KNOBB+ HELP"},
+        {"FADERS", "F1  CUTOFF", "F2  RESO", "F3  FMOD RATE", "F4  FMOD DEPTH", "PITCH BEND", "MOD  SWEEP"}};
     uint32_t p, k;
     if (fm1_ms - ui.help_t >= 2500u) {
         ui.help_t = fm1_ms;
