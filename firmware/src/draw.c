@@ -733,7 +733,7 @@ static void boot_frame(uint32_t t)
             int32_t k2 = clamp((int32_t)(t - 1300u) * 256 / 400, 0, 256);
             cv_rect(0, 158, 240, 82, RGB(4, 0, 12));     /* (a calm band under the name) */
             text_c(120, 162, &FONT_XL, "MAKKURO37", RGB(255 * k2 >> 8, 64 * k2 >> 8, 200 * k2 >> 8));
-            text_c(120, 208, &FONT_L, "by genkigenki", RGB(200 * k2 >> 8, 190 * k2 >> 8, 240 * k2 >> 8));
+            text_c(120, 214, &FONT_S, "by genkigenki", RGB(200 * k2 >> 8, 190 * k2 >> 8, 240 * k2 >> 8));
         }
         cv_oy = 0;
         cv_blit(0, (uint32_t)y0);
