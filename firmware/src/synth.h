@@ -49,10 +49,12 @@ typedef struct {                /* run-time state of a voice (audio side) */
     /* noise voice */
     uint32_t mph, minc;
     uint32_t nz;
-    int32_t lag, am, stair, sh;
-    uint8_t cnt, msq;
+    int32_t lag, am, sh;
+    uint8_t cnt;
+    int32_t kv[6];              /* per-tick constants of the render (by type) */
     /* VCO */
-    int32_t pitch, target;      /* cents x 16 (glide) */
+    int32_t pitch;              /* cents x 16, gliding */
+    uint8_t trig;               /* key triggers seen */
 } vstate_t;
 
 /* tuning sets */

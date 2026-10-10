@@ -37,6 +37,9 @@ static struct {
     uint32_t patch_down;                   /* PATCH held since (ms), 0 = up */
 } ui;
 
+static void keys_poll(void);
+static void midi_poll(void);
+
 static void ui_say(const char *a, const char *b)
 {
     str_cpy(ui.msg, a, sizeof ui.msg);
@@ -581,6 +584,7 @@ static void ui_input(void)
 {
     uint32_t v;
     pads_poll();
+    keys_poll();
     buttons_poll();
     knobs_poll();
     faders_poll();
@@ -592,12 +596,71 @@ static void ui_input(void)
     }
 }
 
-/* USB MIDI in: drained here (notes play voices 4 + 5 once the keys do) */
+/* ------------------------------------------------------------- keys --- */
+/* the keybed and USB MIDI notes play voices 4 + 5: the last two keys held (4 the lower, 5 the upper),
+ * one key both (KEYS DUO); KEYS UNISON: the last key both. Tuned by the tuning set. */
+static struct { uint8_t id; int8_t k; } keyq[8];
+static uint32_t nkeyq;
+
+static int32_t key_to_cents(int32_t k)              /* k: semitone keys above C2 (degrees for non-12 sets) */
+{
+    uint32_t set = (uint32_t)pt.g[G_TSET], root = (uint32_t)pt.g[G_ROOT], n = TSETS[set % TS_N].n;
+    return n == 12u ? tun_key(set, root, 36 + k) : tun_degree(set, root, 3 * (int32_t)n + k);
+}
+
+static void key_event(uint32_t id, int32_t k, int on)
+{
+    uint32_t i, j;
+    for (i = j = 0; i < nkeyq; i++)                    /* (a key held again moves to the end) */
+        if (keyq[i].id != id)
+            keyq[j++] = keyq[i];
+    nkeyq = j;
+    if (on) {
+        if (nkeyq == 8u) {
+            for (i = 1; i < 8u; i++)
+                keyq[i - 1u] = keyq[i];
+            nkeyq--;
+        }
+        keyq[nkeyq].id = (uint8_t)id;
+        keyq[nkeyq].k = (int8_t)k;
+        nkeyq++;
+        key_trig++;
+    }
+}
+
+static void keys_update(void)                       /* every poll: follows the tuning set too */
+{
+    if (nkeyq) {
+        int32_t a = key_to_cents(keyq[nkeyq - 1u].k), b = nkeyq > 1u && !pt.g[G_KEYS] ? key_to_cents(keyq[nkeyq - 2u].k) : a;
+        key_cents[0] = a < b ? a : b;
+        key_cents[1] = a < b ? b : a;
+    }
+    key_gate = nkeyq != 0u;
+}
+
+static void keys_poll(void)
+{
+    uint64_t now = fm1_in.keys, ch = now ^ ui.keys;
+    uint32_t k;
+    ui.keys = now;
+    for (k = 0; ch && k < 37u; k++)
+        if ((ch >> k) & 1u)
+            key_event(k, (int32_t)k + 12 * ui.oct, (int)((now >> k) & 1u));
+    keys_update();
+}
+
+/* USB MIDI in: notes play voices 4 + 5 as the keys do */
 static void midi_poll(void)
 {
     while (mi_r != mi_w) {
+        uint32_t pkt, cin, n, vel;
         RING_PUBLISH();
-        (void)midi_in_q[mi_r % MQ];
+        pkt = midi_in_q[mi_r % MQ];
+        RING_PUBLISH();
         mi_r++;
+        cin = pkt & 15u, n = (pkt >> 16) & 127u, vel = (pkt >> 24) & 127u;
+        if (cin == 9u || cin == 8u)
+            key_event(128u + n, (int32_t)n - 36, cin == 9u && vel);
     }
+    keys_update();
 }

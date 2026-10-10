@@ -10,6 +10,7 @@ static struct {
     int32_t peak;                          /* |out| max since the last read (console), Q15 */
     uint32_t overs;                        /* samples the limiter had to bend */
     uint32_t ticks;
+    int32_t xl, xr, dl, dr;                /* DC blocker state (x256) */
 } syn;
 
 static inline int32_t clamp(int32_t v, int32_t lo, int32_t hi) { return v < lo ? lo : v > hi ? hi : v; }
@@ -90,7 +91,7 @@ static inline int32_t env_amp(int32_t env) { int32_t e = env >> 9; return (e * e
 /* ------------------------------------------------------------- classic --- */
 static const uint8_t GEN_LO[5] = {12, 35, 50, 64, 79};      /* C0, B1, D3, E4, G5 */
 static const uint8_t GEN_HI[5] = {43, 55, 71, 84, 98};      /* G2, G3, B4, C6, D7 */
-static const uint16_t VNORM[6] = {0, 16384, 11585, 9459, 8192, 7327};   /* 0.5 / sqrt(n) */
+static const uint16_t VNORM[6] = {0, 22938, 16219, 13243, 11469, 10258};   /* 0.7 / sqrt(n) */
 
 static int32_t mod_cents(const int16_t *p)      /* the voice's MOD source: up to +-1 octave */
 {
@@ -156,64 +157,269 @@ static void classic_render(vstate_t *s, const int16_t *p, int32_t *o, uint32_t n
     }
 }
 
+/* ------------------------------------------------------------- noise ("Papa Srapa") --- */
+/* tone: a square (PITCH, RANGE); modulator: a square (RATE, x1 / x10) whose DIVIDER makes a staircase of
+ * 2 x DIVIDER steps; FM bends the tone up to 5x along it (with a glide: the sirens), AM gates the tone.
+ * NOISE adds white noise; the S&H samples it on its clock and moves the tone (S&H AMT). */
+enum { NK_FMD, NK_LAG, NK_STEP, NK_TONE, NK_NOISE, NK_MODE };
+static uint8_t clk_edges;                  /* this tick: bit 0 LFO A wrapped, 1 LFO B, 2 pulser step */
+
+static inline uint32_t xorshift(uint32_t *x)
+{
+    uint32_t v = *x ? *x : 0x9E3779B9u;
+    v ^= v << 13;
+    v ^= v >> 17;
+    v ^= v << 5;
+    return *x = v;
+}
+
+static void noise_tick(vstate_t *s, const int16_t *p, int32_t fine)
+{
+    int32_t lo = p[NZ_RANGE] ? 4800 : 1200, hi = p[NZ_RANGE] ? 10000 : 6000, a = p[NZ_SHAMT], c;
+    uint32_t clk = (uint32_t)p[NZ_SHCLK];
+    if (clk && ((clk_edges >> (clk - 1u)) & 1u))
+        s->sh = (int32_t)xorshift(&s->nz) >> 16;   /* S&H on LFO A / B / the pulser */
+    c = lo + p[NZ_PITCH] * (hi - lo) / 127 + fine + mod_cents(p) + ((s->sh * (a * a * 2400 / 16129)) >> 15);
+    s->inc[0] = cents_inc(c);
+    if (s->inc[0] > 1u << 28)
+        s->inc[0] = 1u << 28;
+    s->minc = (MODR[p[NZ_RATE] & 127] * (p[NZ_MULT] ? 10u : 1u)) >> 5;   /* per sample */
+    s->kv[NK_FMD] = p[NZ_FMAMT] * p[NZ_FMAMT] * 2;
+    s->kv[NK_LAG] = clamp((int32_t)((s->minc >> 8) * 25u >> 9), 8, 32767);   /* glide ~ 1/8 modulator period */
+    s->kv[NK_STEP] = 32767 / (2 * clamp(p[NZ_DIV], 1, 8) - 1);
+    s->kv[NK_TONE] = p[NZ_PITCH] ? 24000 : 0;      /* PITCH all the way down: noise only */
+    s->kv[NK_NOISE] = p[NZ_NOISE] * p[NZ_NOISE] * 3;
+    s->kv[NK_MODE] = p[NZ_MODE];
+}
+
+static void noise_render(vstate_t *s, const int16_t *p, int32_t *o, uint32_t n)
+{
+    uint32_t i, ph = s->ph[0], base = s->inc[0], mph = s->mph, minc = s->minc, div = (uint32_t)clamp(p[NZ_DIV], 1, 8);
+    uint32_t sh_mod = p[NZ_SHCLK] == 0, mode = (uint32_t)s->kv[NK_MODE], cnt = s->cnt;
+    int32_t lag = s->lag, am = s->am, fmd = s->kv[NK_FMD], ka = s->kv[NK_LAG], step = s->kv[NK_STEP];
+    int32_t tone = s->kv[NK_TONE], nl = s->kv[NK_NOISE];
+    int fm = mode == NM_FM || mode == NM_FMAM, amm = mode == NM_AM || mode == NM_FMAM;
+    for (i = 0; i < n; i++) {
+        uint32_t inc = base, half;
+        int32_t y, m;
+        mph += minc;
+        if (mph < minc) {                              /* the modulator's cycle */
+            cnt = cnt + 1u >= div ? 0u : cnt + 1u;
+            if (sh_mod)
+                s->sh = (int32_t)xorshift(&s->nz) >> 16;
+        }
+        half = mph >> 31;
+        if (fm) {
+            m = (int32_t)(cnt * 2u + half) * step;     /* 0..32767 staircase (a square for DIVIDER 1) */
+            lag += ((m - lag) * ka) >> 15;
+            inc += (base >> 13) * (uint32_t)((lag * fmd) >> 15);
+        }
+        ph += inc;
+        y = (ph < 0x80000000u ? 32767 : -32767) + blep(ph, inc) - blep(ph + 0x80000000u, inc);
+        y = (y * tone) >> 15;
+        if (amm) {
+            am += (((int32_t)(half ^ 1u) * 32767 - am) >> 5);
+            y = (y * am) >> 15;
+        }
+        if (nl)
+            y += (((int32_t)xorshift(&s->nz) >> 16) * nl) >> 15;
+        o[i] += y;
+    }
+    s->ph[0] = ph, s->mph = mph, s->cnt = (uint8_t)cnt, s->lag = lag, s->am = am;
+}
+
+/* ------------------------------------------------------------- VCO --- */
+/* voices 4 + 5: six waves (two of them morphing), octave switch, TUNE, FM (4: feedback, 5: from voice 4),
+ * SYNC (5 to 4), ADSR with HOLD / LOOP; pitch from the keys (key_cents), gliding. */
+static int32_t key_cents[2] = {4800, 4800};        /* the keys' pitches for voices 4 / 5 (cents) */
+static volatile uint8_t key_gate, key_trig;        /* a key held; presses so far */
+static const int16_t OCT_CENTS[8] = {-6000, -3600, -2400, -1200, 0, 1200, 2400, 3600};
+enum { VK_W, VK_KU, VK_KD, VK_SHAPE, VK_PW, VK_FM };
+
+static void adsr(vstate_t *s, const int16_t *p, uint32_t gate)
+{
+    int32_t top = 1 << 24, sus = p[VC_SUS] * 132104;          /* SUSTAIN 127 = full */
+    uint32_t eg = (uint32_t)p[VC_EG];
+    if (gate && (!s->gate || s->stage == 0u || s->stage == 3u))
+        s->stage = 1;
+    if (!gate && s->stage && s->stage != 3u)
+        s->stage = 3;
+    s->gate = (uint8_t)gate;
+    if (s->stage == 1u) {
+        s->env += (int32_t)ENV_STEP[p[VP_ATT] & 127];
+        if (s->env >= top) {
+            s->env = top;
+            s->stage = 2;
+        }
+    } else if (s->stage == 2u) {
+        int32_t floor = eg == EG_LOOP ? 0 : eg == EG_HOLD ? top : sus;   /* HOLD: stays up (A / R) */
+        s->env = floor + (int32_t)((((uint32_t)(s->env - floor)) >> 8) * ENV_FALL[p[VC_DEC] & 127] >> 8);
+        if (eg == EG_LOOP && s->env < 1 << 18)
+            s->stage = 1;                          /* LOOP: attack again (while the gate is on) */
+    } else if (s->stage == 3u) {
+        s->env = (int32_t)(((uint32_t)s->env >> 8) * ENV_FALL[p[VP_RLS] & 127] >> 8);
+        if (s->env < 1 << 10) {
+            s->env = 0;
+            s->stage = 0;
+        }
+    }
+}
+
+static void vco_tick(uint32_t v, vstate_t *s, const int16_t *p, int32_t fine, int32_t glide)
+{
+    int32_t tgt = (key_cents[v - 3u] + OCT_CENTS[p[VC_OCT] & 7] + p[VC_TUNE] + fine + mod_cents(p)) * 16, w;
+    if (!s->pitch || !glide)
+        s->pitch = tgt;
+    else
+        s->pitch = tgt + (int32_t)(((int64_t)(s->pitch - tgt) * ENV_FALL[glide]) >> 16);
+    s->inc[0] = cents_inc(s->pitch >> 4);
+    if (s->inc[0] > 1u << 29)
+        s->inc[0] = 1u << 29;
+    w = clamp(p[VC_SHAPE] * 258, 128, 32640);      /* the morph's corner, 15-bit phase */
+    s->kv[VK_W] = w;
+    s->kv[VK_KU] = (65535 << 6) / w;
+    s->kv[VK_KD] = (65535 << 6) / (32768 - w);
+    s->kv[VK_SHAPE] = p[VC_SHAPE] * 258;
+    s->kv[VK_PW] = (int32_t)(0x80000000u + (uint32_t)(p[VC_SHAPE] - 64) * 0x1F00000u);   /* pulse width 5..95 % */
+    s->kv[VK_FM] = p[VC_FM] * p[VC_FM] * 2;
+}
+
+static inline int32_t vco_wave(const vstate_t *s, uint32_t w, uint32_t ph, uint32_t inc)
+{
+    switch (w) {
+    case W_SAW:
+        return saw(ph, inc);
+    case W_PULSE:
+        return (saw(ph, inc) - saw(ph + (uint32_t)s->kv[VK_PW], inc)) >> 1;
+    case W_TRI: {
+        int32_t t = (int32_t)((ph + 0x40000000u) >> 15);
+        return t < 65536 ? t - 32768 : 98303 - t;
+    }
+    case W_SINE:
+        return SINE[ph >> 22];
+    case W_SAWMORPH: {                             /* falling saw .. triangle .. rising saw */
+        int32_t p15 = (int32_t)(ph >> 17), wq = s->kv[VK_W];
+        return p15 < wq ? -32768 + ((p15 * s->kv[VK_KU]) >> 6) : 32767 - (((p15 - wq) * s->kv[VK_KD]) >> 6);
+    }
+    default: {                                     /* sine .. triangle */
+        int32_t t = (int32_t)((ph + 0x40000000u) >> 15), sn = SINE[ph >> 22];   /* (in phase with the sine) */
+        t = t < 65536 ? t - 32768 : 98303 - t;
+        return sn + (((t - sn) * s->kv[VK_SHAPE]) >> 15);
+    }
+    }
+}
+
+/* both VCOs in one pass: 5 follows 4 (FM, SYNC) */
+static void vco_render(int32_t *o4, int32_t *o5, uint32_t n)
+{
+    vstate_t *a = &vs[3], *b = &vs[4];
+    const int16_t *pa = pt.v[3], *pb = pt.v[4];
+    uint32_t i, wa = (uint32_t)pa[VC_WAVE], wb = (uint32_t)pb[VC_WAVE], pha = a->ph[0], phb = b->ph[0];
+    uint32_t ia = a->inc[0], ib = b->inc[0], sync = (uint32_t)pb[VC_SYNC], on_a = o4 != 0, on_b = o5 != 0;
+    int32_t fa = a->kv[VK_FM], fb = b->kv[VK_FM], ya = a->last[0], yb;
+    for (i = 0; i < n; i++) {
+        uint32_t inc = ia + (uint32_t)((int32_t)(ia >> 14) * ((ya * fa) >> 15));   /* 4: feedback FM */
+        pha += inc;
+        ya = vco_wave(a, wa, pha, inc);
+        if (on_a)
+            o4[i] += (ya * 26000) >> 15;
+        if (on_b) {
+            inc = ib + (uint32_t)((int32_t)(ib >> 13) * ((ya * fb) >> 15));         /* 5: FM from 4 */
+            phb += inc;
+            if (sync && pha < ia)
+                phb = pha;                         /* hard sync: 5 restarts with 4 */
+            yb = vco_wave(b, wb, phb, inc);
+            o5[i] += (yb * 26000) >> 15;
+        }
+    }
+    a->ph[0] = pha, b->ph[0] = phb, a->last[0] = ya;
+}
+
 /* ------------------------------------------------------------- the mix --- */
 static int32_t vol_q15(int32_t v) { v = clamp(v, 0, 127); return v * v * 2; }
 
 static void synth_tick(void)
 {
-    uint32_t v;
+    uint32_t v, trig = key_trig;
+    int32_t fine = pt.g[G_FINE], glide = clamp(pt.g[G_GLIDE], 0, 127) * 3 / 4;
     syn.ticks++;
     for (v = 0; v < NV; v++) {
         vstate_t *s = &vs[v];
         const int16_t *p = pt.v[v];
         uint32_t gate = gate_in[v];
-        int32_t amp;
-        if (VTYPE[v] != VT_CLASSIC)
-            continue;
-        env_ar(s, gate, (uint32_t)p[VP_ATT], (uint32_t)p[VP_RLS]);
-        if (s->stage)
-            classic_tick(s, p, pt.g[G_FINE]);
-        amp = (env_amp(s->env) * vol_q15(p[VP_VOL])) >> 15;
-        s->level = amp;
+        if (VTYPE[v] == VT_VCO) {
+            gate |= key_gate;
+            if (s->trig != (uint8_t)trig && key_gate)
+                s->gate = 0;                       /* a new key: attack again */
+            s->trig = (uint8_t)trig;
+            adsr(s, p, gate);
+            vco_tick(v, s, p, fine, glide);
+        } else {
+            env_ar(s, gate, (uint32_t)p[VP_ATT], (uint32_t)p[VP_RLS]);
+            if (s->stage) {
+                if (VTYPE[v] == VT_CLASSIC)
+                    classic_tick(s, p, fine);
+                else
+                    noise_tick(s, p, fine);
+            }
+        }
+        s->level = (env_amp(s->env) * vol_q15(p[VP_VOL])) >> 15;
     }
+    modv[MS_SH3] = vs[2].sh;
+    modv[MS_SH8] = vs[7].sh;
 }
 
-static int32_t bus_l[CTL], bus_r[CTL], vbuf[CTL];
+static int32_t bus_l[CTL], bus_r[CTL], vbuf[NV][CTL];
 
 /* one control block: n = CTL frames into out (L, R interleaved, Q15) */
 static void synth_block(int32_t *out, uint32_t n)
 {
     uint32_t v, i;
     int32_t m;
+    uint8_t on[NV];
     synth_tick();
     for (i = 0; i < n; i++)
         bus_l[i] = bus_r[i] = 0;
     for (v = 0; v < NV; v++) {
+        on[v] = vs[v].stage || vs[v].gl || vs[v].gr;
+        if (on[v])
+            for (i = 0; i < n; i++)
+                vbuf[v][i] = 0;
+    }
+    for (v = 0; v < NV; v++)
+        if (on[v]) {
+            if (VTYPE[v] == VT_CLASSIC)
+                classic_render(&vs[v], pt.v[v], vbuf[v], n);
+            else if (VTYPE[v] == VT_NOISE)
+                noise_render(&vs[v], pt.v[v], vbuf[v], n);
+        }
+    if (on[3] || on[4])
+        vco_render(on[3] ? vbuf[3] : 0, on[4] ? vbuf[4] : 0, n);
+    for (v = 0; v < NV; v++) {
         vstate_t *s = &vs[v];
-        const int16_t *p = pt.v[v];
-        int32_t pan = clamp(p[VP_PAN], 0, 127) * 256 / 127;          /* quarter sine: constant power */
+        int32_t pan = clamp(pt.v[v][VP_PAN], 0, 127) * 256 / 127;          /* quarter sine: constant power */
         int32_t tl = (s->level * SINE[256 + pan]) >> 15, tr = (s->level * SINE[pan]) >> 15;
-        int32_t dl, dr, gl = s->gl, gr = s->gr;
-        if (!s->stage && !gl && !gr)
+        int32_t dl = (tl - s->gl) >> 5, dr = (tr - s->gr) >> 5, gl = s->gl, gr = s->gr;   /* (n = CTL = 32) */
+        const int32_t *x = vbuf[v];
+        if (!on[v])
             continue;
-        for (i = 0; i < n; i++)
-            vbuf[i] = 0;
-        if (VTYPE[v] == VT_CLASSIC)
-            classic_render(s, p, vbuf, n);
-        dl = (tl - gl) >> 5;                   /* (n = CTL = 32) */
-        dr = (tr - gr) >> 5;
         for (i = 0; i < n; i++) {
             gl += dl;
             gr += dr;
-            bus_l[i] += (vbuf[i] * gl) >> 15;
-            bus_r[i] += (vbuf[i] * gr) >> 15;
+            bus_l[i] += (x[i] * gl) >> 15;
+            bus_r[i] += (x[i] * gr) >> 15;
         }
         s->gl = tl;
         s->gr = tr;
     }
     m = vol_q15(pt.g[G_MASTER]);
-    for (i = 0; i < n; i++) {
-        int32_t l = soft((bus_l[i] * (m >> 4)) >> 11), r = soft((bus_r[i] * (m >> 4)) >> 11);
+    for (i = 0; i < n; i++) {                       /* DC blocker (~7 Hz), master, soft limiter */
+        int32_t xl = bus_l[i] << 8, xr = bus_r[i] << 8, l, r;
+        syn.dl += xl - syn.xl - ((syn.dl + 512) >> 10);
+        syn.dr += xr - syn.xr - ((syn.dr + 512) >> 10);
+        syn.xl = xl, syn.xr = xr;
+        l = soft(((syn.dl >> 8) * (m >> 4)) >> 11);
+        r = soft(((syn.dr >> 8) * (m >> 4)) >> 11);
         int32_t a = l < 0 ? -l : l, b = r < 0 ? -r : r;
         if (a > syn.peak)
             syn.peak = a;

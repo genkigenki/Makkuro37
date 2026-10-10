@@ -78,6 +78,7 @@ static void reset(void)
 {
     memset(vs, 0, sizeof vs);
     memset((void *)gate_in, 0, sizeof gate_in);
+    key_gate = 0;
     patch_init(&pt);
 }
 #define SEC(s) ((uint32_t)((s) * FS / CTL))
@@ -90,6 +91,44 @@ static void s_v1_volt(uint32_t b)
 }
 static void s_classic4(uint32_t b) { gate_in[0] = gate_in[1] = gate_in[5] = gate_in[6] = b < SEC(4); }
 static void s_all(uint32_t b) { uint32_t v; for (v = 0; v < NV; v++) gate_in[v] = b < SEC(4); }
+static void s_noise3(uint32_t b) { gate_in[2] = b < SEC(4); }
+static void s_noise3_modes(uint32_t b)              /* drone, FM, AM, FM+AM: 1.5 s each, DIVIDER 3 */
+{
+    gate_in[2] = 1;
+    pt.v[2][NZ_MODE] = (int16_t)(b / SEC(1.5) % 4);
+    pt.v[2][NZ_DIV] = 3;
+    pt.v[2][NZ_RATE] = 70;
+}
+static void s_noise8(uint32_t b) { gate_in[7] = b < SEC(4); }
+static void s_vco_keys(uint32_t b)                  /* a duophonic line with glide, each wave in turn */
+{
+    static const int8_t LINE[8][2] = {{0, 7}, {2, 9}, {4, 12}, {5, 12}, {7, 16}, {5, 14}, {4, 12}, {0, 7}};
+    uint32_t step = b / SEC(0.5);
+    pt.v[3][VC_WAVE] = pt.v[4][VC_WAVE] = (int16_t)(step / 2 % 6);
+    key_gate = step < 8;
+    key_cents[0] = 4800 + LINE[step & 7][0] * 100;
+    key_cents[1] = 4800 + LINE[step & 7][1] * 100;
+    if (b % SEC(0.5) == 0)
+        key_trig++;
+}
+static void s_vco_fm_sync(uint32_t b)
+{
+    key_gate = b < SEC(4);
+    key_cents[0] = 3600;
+    key_cents[1] = 3600 + (int32_t)(b * 2400 / SEC(4));
+    pt.v[4][VC_SYNC] = 1;
+    pt.v[4][VC_FM] = 60;
+    pt.v[3][VC_FM] = 30;
+}
+static void s_vco_loop(uint32_t b)
+{
+    gate_in[3] = b < SEC(4);
+    pt.v[3][VC_EG] = EG_LOOP;
+    pt.v[3][VP_ATT] = 20;
+    pt.v[3][VC_DEC] = 50;
+    pt.v[3][VC_WAVE] = W_SAWMORPH;
+    pt.v[3][VC_SHAPE] = (int16_t)(b * 127 / SEC(4) > 127 ? 127 : b * 127 / SEC(4));
+}
 
 int main(int argc, char **argv)
 {
@@ -101,6 +140,18 @@ int main(int argc, char **argv)
     render(dir, "v1_volt_sweep", 4, s_v1_volt, 3000);
     reset();
     render(dir, "classic_x4", 5, s_classic4, 3000);
+    reset();
+    render(dir, "noise3_siren", 5, s_noise3, 3000);
+    reset();
+    render(dir, "noise3_modes", 6, s_noise3_modes, 3000);
+    reset();
+    render(dir, "noise8_wind", 5, s_noise8, 1000);
+    reset();
+    render(dir, "vco_keys_waves", 5, s_vco_keys, 3000);
+    reset();
+    render(dir, "vco_fm_sync", 5, s_vco_fm_sync, 3000);
+    reset();
+    render(dir, "vco_loop_morph", 5, s_vco_loop, 3000);
     reset();
     render(dir, "all_voices", 5, s_all, 3000);
     printf(fails ? "host: %d FAILED\n" : "host: all ok\n", fails);
