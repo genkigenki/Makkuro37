@@ -150,7 +150,7 @@ for (let e = 0; e < 8; e++) {
 // ---- pads: hardware 0..7 top row, 8..15 bottom row
 const padEl = [];
 for (let p = 0; p < 16; p++) {
-  const el = mk("pad", `<i>${p < 8 ? p + 1 : ["N", "", "", "", "", "P", "H", "C"][p - 8]}</i>`);
+  const el = mk("pad", `<i>${p < 8 ? p + 1 : ["KB", "", "", "", "", "P", "H", "C"][p - 8]}</i>`);
   el.style.setProperty("--c", KC[p & 7] + "88");
   el.addEventListener("pointerdown", (ev) => { el.setPointerCapture(ev.pointerId); send({ type: "pad", pad: p, vel: ev.shiftKey ? 40 : 110 }); });
   el.addEventListener("pointerup", () => send({ type: "pad", pad: p, vel: 0 }));

@@ -198,14 +198,14 @@ static void home_header(void)
     cv_blit(0, 0);
 }
 
-/* below the creatures: each voice's note (one row), then the turned value / a message / CHAOS / NOTE, then what
+/* below the creatures: each voice's note (one row), then the turned value / a message / CHAOS / KB, then what
  * the bottom pads do */
 static void home_bottom(void)
 {
-    static const char *const BOT[8] = {"NOTE", "", "", "", "", "PULSE", "HOLD", "CHAOS"};
+    static const char *const BOT[8] = {"KB", "", "", "", "", "PULSE", "HOLD", "CHAOS"};
     uint32_t v, bl = (fm1_ms >> 8) & 1u, cz = (int32_t)(ui.cz.until - fm1_ms) > 0;
     cv_begin(240, 124, C_BG);
-    for (v = 0; v < NV; v++) {                           /* the notes: picked (NOTE) boxed, rolling (CHAOS) white */
+    for (v = 0; v < NV; v++) {                           /* the notes: selected (KB) boxed, rolling (CHAOS) white */
         char b[8];
         int32_t x = COLW * (int32_t)v;
         int roll = cz && ui.cz.n < 3u && ((ui.cz.mask >> v) & 1u);
@@ -233,8 +233,8 @@ static void home_bottom(void)
                     cv_rect(x - 11, 31 + 22 * r, 22, 1, rgbk(VCOL[v], 120));   /* (struck out) */
             }
         }
-    } else if (ui.note)                                  /* NOTE: what to press, blinking until a voice is picked */
-        text_c(120, 40, &FONT_L, ui.nsel ? "PLAY A KEY" : "PRESS A VOICE",
+    } else if (ui.kbm)                                   /* KB: what to do, blinking until a voice is selected */
+        text_c(120, 40, &FONT_L, ui.nsel ? "PLAY KEYBOARD" : "SELECT VOICES",
                ui.nsel || bl ? RGB(60, 220, 255) : RGB(20, 70, 90));
     else if ((int32_t)(ui.msg_until - fm1_ms) > 0)
         text_c(120, 40, &FONT_L, ui.msg, RGB(255, 255, 255));
@@ -242,7 +242,7 @@ static void home_bottom(void)
         int32_t w = text_w(&FONT_S, BOT[v]), x = clamp(COLW * (int32_t)v + COLW / 2, w / 2, 240 - w / 2);
         uint16_t c = v == 0u ? RGB(60, 220, 255) : v == 5u ? RGB(255, 210, 40) : v == 6u ? RGB(200, 200, 220)
                      : RGB(255, 60, 200);
-        text_c(x, (v & 1u) ? 106 : 90, &FONT_S, BOT[v], v == 0u && ui.note && bl ? RGB(255, 255, 255) : c);
+        text_c(x, (v & 1u) ? 106 : 90, &FONT_S, BOT[v], v == 0u && ui.kbm && bl ? RGB(255, 255, 255) : c);
     }
     cv_blit(0, 116);
 }
@@ -501,7 +501,7 @@ static const char *help_line(uint32_t p, uint32_t i, char *b, uint32_t n)
 {
     static const char *const T[HELP_N] = {"PADS", "KNOBS", "MENUS", "MENUS", "PLAY", "FADERS"};
     static const char *const L[HELP_N][6] = {
-        {"", "", "", "TOP: VOICES", "N NOTE  P PULSE", "H HOLD C CHAOS"},
+        {"", "", "", "KB KEYBOARD", "P PULSE H HOLD", "C CHAOS"},
         {"HOME:", "K1-K8 PITCH", "MENU:", "KNOB=COLUMN", "2 CHOICES:", "THE PADS"},
         {0, 0, 0, 0, 0, 0},
         {0, 0, "KNOBB  PRESETS", "PATCH  HOME", "PATCH+ SETUP", "< >    PAGE"},
@@ -540,7 +540,7 @@ static void draw_help(void)
     cv_begin(240, 120, RGB(0, 0, 0));
     text_c(120, 0, &FONT_L, help_line(p, 0xFFu, b, sizeof b), RGB(255, 255, 255));
     if (p == 0u) {                                       /* the pads in their colours */
-        static const char BOT[8] = {'N', ' ', ' ', ' ', ' ', 'P', 'H', 'C'};
+        static const char BOT[8] = {'K', ' ', ' ', ' ', ' ', 'P', 'H', 'C'};
         for (k = 0; k < 16u; k++) {
             int32_t x = 1 + 30 * (int32_t)(k & 7u), y = k < 8u ? 34 : 76;
             char d[2] = {k < 8u ? (char)('1' + k) : BOT[k - 8u], 0};

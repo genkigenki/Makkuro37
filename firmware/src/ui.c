@@ -2,8 +2,9 @@
  * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
 /* Controls: one logic for everything. The screen is laid out as the panel, K1..K8 above the 8 pad columns, so
  * column i is voice i everywhere.
- *   HOME: Ki = voice i's pitch, top pad i its gate; bottom pads N (note), P (pulser), H (hold all), C (chaos).
- *   A key while a voice pad is held (or in NOTE, the voices picked) tunes those voices to it.
+ *   HOME: Ki = voice i's pitch, top pad i its gate; bottom pads KB (keyboard), P (pulser), H (hold all), C (chaos).
+ *   KB: select voices, then the keys tune them (keys held together: spread over them); a key while a voice pad
+ *   is held does the same.
  *   A button opens its menu at page 1; < > turn the pages; the same button again, or PATCH, goes home. On every
  *   page knob Ki sets column i; a value with two choices (or on / off) sits on the column's top / bottom pad.
  *   KNOB BANK: PRESETS (held: HELP; there K1-K8 are filters). PATCH: HOME (held: SETUP).
@@ -154,7 +155,9 @@ static struct {
     uint32_t tap_t;
     uint8_t dlg, dlg_arg;                  /* SAVE over a used slot: the green or the red pad */
     uint8_t chaos_held, chaos_used;
-    uint8_t note, nsel, pdown;             /* NOTE: on, the voices picked; the voice pads held now */
+    uint8_t kbm, nsel, pdown;              /* KB: on, the voices selected; the voice pads held now */
+    int8_t kbk[NV];                        /* (the keys held now, low to high) */
+    uint8_t kbn;
     uint8_t czhit[NV];                     /* (a creature hops: CHAOS rolled it) */
     struct { uint8_t mask, n; uint32_t t, until; int32_t hist[NV][3]; } cz;   /* CHAOS: 3 rolls, 170 ms apart */
     uint8_t save_pad;                      /* MINE: the pad held (+1), since save_t */
@@ -755,7 +758,7 @@ static void tap_press(void)
 
 static void home_pad(uint32_t pad, uint32_t vel)
 {
-    if (pad < 8u && ui.note) {                          /* NOTE: a top pad picks its voice (or lets it go) */
+    if (pad < 8u && ui.kbm) {                           /* KB: a top pad selects its voice (or lets it go) */
         if (vel)
             ui.nsel ^= (uint8_t)(1u << pad);
         ui.dirty = 1;
@@ -772,9 +775,9 @@ static void home_pad(uint32_t pad, uint32_t vel)
             gate_press(pad);
         } else
             gate_release(pad);
-    } else if (pad == 8u) {                             /* N: NOTE (pick voices, then keys tune them) */
+    } else if (pad == 8u) {                             /* KB: select voices, then the keys tune them */
         if (vel) {
-            ui.note ^= 1u;
+            ui.kbm ^= 1u;
             ui.nsel = 0;
             ui.dirty = 1;
         }
@@ -989,7 +992,7 @@ static void menu_go(uint32_t m)
     ui.page = 0;
     ui.altmask = 0;
     ui.save_pad = 0;
-    ui.note = ui.nsel = ui.pdown = 0;
+    ui.kbm = ui.nsel = ui.pdown = 0;
     if (m == MN_PRESETS)
         ui.pre_sel = ui.preset;
     menu_build();
@@ -1140,7 +1143,7 @@ static void ui_leds(void)
     if (ui.dlg) {                                       /* a question: only red and green */
         PAD(14, 255, 0, 0, 256);
         PAD(15, 0, 255, 0, 256);
-    } else if (ui.menu == MN_HOME && ui.note) {         /* NOTE: the picked white; none yet: all blink */
+    } else if (ui.menu == MN_HOME && ui.kbm) {          /* KB: the selected white; none yet: all blink */
         uint32_t bl = (fm1_ms >> 8) & 1u;
         for (v = 0; v < NV; v++)
             if ((ui.nsel >> v) & 1u)
@@ -1149,7 +1152,7 @@ static void ui_leds(void)
                 PADC(v, v, ui.nsel || bl ? 40 : 230);
         PAD(8, 60, 220, 255, bl ? 256 : 120);
     } else if (ui.menu == MN_HOME) {
-        PAD(8, 60, 220, 255, 60);                       /* N: NOTE */
+        PAD(8, 60, 220, 255, 60);                       /* KB */
         for (v = 0; v < NV; v++) {
             int32_t l = vs[v].level, k = ui.pad_gate[v] ? 120 + (l >> 8) : vs[v].stage ? 10 + (l >> 9) : 10;   /* on: bright; fading: dim */
             if (VTYPE[v] == VT_VCO && kb.padhold[v - 3u])
@@ -1305,22 +1308,45 @@ static void free_key(int32_t key, uint32_t down, uint32_t vel)
 }
 
 /* ------------------------------------------------------------- keys --- */
-/* a key: tunes the voices picked (NOTE) or held (a voice pad), else FREE-PLAY or the VCOs 4 + 5 */
+/* the keys held now (low to high): one tunes every voice of m, several are spread over them in turn */
+static void kb_held(int32_t key, uint32_t down)
+{
+    uint32_t i, j = 0;
+    for (i = 0; i < ui.kbn; i++)
+        if (ui.kbk[i] != key)
+            ui.kbk[j++] = ui.kbk[i];
+    ui.kbn = (uint8_t)j;
+    if (!down || ui.kbn >= NV)
+        return;
+    for (i = ui.kbn; i > 0u && ui.kbk[i - 1u] > key; i--)
+        ui.kbk[i] = ui.kbk[i - 1u];
+    ui.kbk[i] = (int8_t)key;
+    ui.kbn++;
+}
+static void kb_spread(uint32_t m, uint32_t vel)
+{
+    uint32_t v, j = 0;
+    char b[8];
+    for (v = 0; v < NV; v++)
+        if ((m >> v) & 1u) {
+            voice_note(v, ui.kbk[j++ % ui.kbn]);
+            voice_wake(v, vel);
+            ui.ignore_rel[v] = !ui.kbm;                 /* (the held pad stays on) */
+        }
+    cents_text(b, sizeof b, (kb_cents(ui.kbk[ui.kbn - 1u]) + 50) / 100 * 100);
+    big_show(8, ui.kbn > 1u ? "SPREAD" : "NOTE", b);
+}
+
+/* a key: tunes the voices selected (KB) or held (a voice pad), else FREE-PLAY or the VCOs 4 + 5 */
 static void key_event(int32_t key, uint32_t down, uint32_t vel, uint32_t side)
 {
-    uint32_t v, m = ui.menu == MN_HOME ? (ui.note ? ui.nsel : ui.pdown) : 0u;
+    uint32_t m = ui.menu == MN_HOME ? (ui.kbm ? ui.nsel : ui.pdown) : 0u;
+    kb_held(key, down);
     if (m) {
-        char b[8];
-        if (!down)
-            return;
-        for (v = 0; v < NV; v++)
-            if ((m >> v) & 1u) {
-                voice_note(v, key);
-                voice_wake(v, vel);
-                ui.ignore_rel[v] = !ui.note;            /* (the held pad stays on) */
-            }
-        cents_text(b, sizeof b, (kb_cents(key) + 50) / 100 * 100);
-        big_show(8, "NOTE", b);
+        if (down && ui.kbn)
+            kb_spread(m, vel);
+        else if (!down)
+            kb_release(key);                            /* (a key pressed before) */
     } else if (ui.free)
         free_key(key, down, vel);
     else if (down)
