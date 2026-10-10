@@ -6,7 +6,7 @@
  * shows its value big for a moment. Few words, big letters. */
 #define C_BG RGB(4, 0, 10)
 static const uint8_t KCOL[4][3] = {{40, 124, 255}, {30, 204, 112}, {255, 198, 24}, {255, 98, 26}};   /* K5..K8 */
-static const uint8_t DIMC[3] = {70, 64, 96};
+static const uint8_t DIMC[3] = {120, 112, 150};
 
 static uint16_t rgbk(const uint8_t *c, int32_t k)          /* colour c at k / 256 */
 {
@@ -68,50 +68,53 @@ static inline uint32_t hash3(int32_t x, int32_t y, uint32_t s)
     return h ^ (h >> 16);
 }
 
-/* one creature into the canvas: centre (cx, cy), body radius r; lv 0..32767 level; hit 0..256 (bonk, fading);
- * sleep: eyes shut; sx / sy: squish (x256); col: its colour */
+/* one creature into the canvas, crisp: a black body, a light spiky fur line (its colour while it sings), a solid
+ * glow ring by its level, big white eyes. (cx, cy) centre, r body radius, lv 0..32767, hit 0..256 (bonk) */
+static const int8_t SPIKE[12][2] = {{0, -16}, {8, -14}, {14, -8}, {16, 0}, {14, 8}, {8, 14},
+                                    {0, 16}, {-8, 14}, {-14, 8}, {-16, 0}, {-14, -8}, {-8, -14}};
 static void creature(int32_t cx, int32_t cy, int32_t r, int32_t lv, int32_t hit, int sleep, int blink,
                      const uint8_t *col, uint32_t seed)
 {
     int32_t sx = 256 + hit / 5, sy = 256 - hit / 4;                   /* squashed by the hammer */
-    int32_t rx = r * sx >> 8, ry = r * sy >> 8, x, y, glow = lv >> 7;  /* glow 0..255 */
+    int32_t rx = r * sx >> 8, ry = r * sy >> 8, x, y, glow = lv >> 7, k;   /* glow 0..255 */
     int32_t by = cy + (r - ry);                                       /* (squashed onto its feet) */
-    int32_t f2 = (rx + 6) * (rx + 6) * 256 / (rx * rx), rxi = rx * rx, ryi = ry * ry;   /* the fur's edge, Q8 */
-    uint16_t hair = glow > 30 ? rgbk(col, 70 + glow / 2) : RGB(92, 82, 116), hair2 = RGB(40, 34, 54);
-    for (y = -ry - 10; y <= ry + 10; y++)
-        for (x = -rx - 10; x <= rx + 10; x++) {
+    int32_t rxi = rx * rx, ryi = ry * ry;
+    uint16_t fur = glow > 24 ? rgbk(col, 140 + glow / 2) : RGB(150, 140, 180);
+    if (glow > 24) {                                                  /* the glow: a solid ring */
+        int32_t gr = r + 7 + (glow >> 6);
+        uint16_t gc = rgbk(col, 60 + glow * 3 / 4);
+        cv_circle(cx, by, gr, gc);
+        cv_circle(cx, by, gr + 1, gc);
+    }
+    for (k = 0; k < 12; k++) {                                        /* fur: spikes, a little restless */
+        int32_t j = (int32_t)((hash3(k, 0, seed) & 3u) == 0u), ex = SPIKE[k][0], ey = SPIKE[k][1];
+        int32_t ox = ex * (rx + 4 + j) / 16, oy = ey * (ry + 4 + j) / 16;
+        cv_thick(cx + ex * rx / 20, by + ey * ry / 20, cx + ox, by + oy, fur);
+    }
+    for (y = -ry - 1; y <= ry + 1; y++)
+        for (x = -rx - 1; x <= rx + 1; x++) {
             int32_t d2 = x * x * 256 / rxi + y * y * 256 / ryi;      /* (radius / body radius)^2, Q8 */
-            if (d2 <= 256) {                                          /* the body, a soft sheen on top */
-                cv_pset(cx + x, by + y, RGB(18, 14, 26));
-            } else if (d2 <= f2) {                                    /* fur: hairs, thinner outwards */
-                uint32_t h = hash3(x, y, seed), t = (uint32_t)((d2 - 256) * 256 / (f2 - 256));
-                if ((h & 255u) < 250u - t * 230u / 256u)
-                    cv_pset(cx + x, by + y, (h & 0x300u) ? hair2 : hair);
-            } else if (glow > 8) {                                    /* the glow around it */
-                int32_t d = (d2 - f2) / 8;
-                if (d < 30 && ((hash3(x, y, seed >> 3) & 3u) || d < 8))
-                    cv_pset(cx + x, by + y, rgbk(col, glow * (30 - d) / 34));
-            }
+            if (d2 <= 256)
+                cv_pset(cx + x, by + y, d2 > 200 ? fur : RGB(10, 8, 16));   /* body, a crisp rim */
         }
-    cv_ellipse(cx - r / 3, by - ry / 2 - 1, r / 5, r / 8, RGB(40, 34, 54));   /* a sheen */
     /* feet */
-    cv_ellipse(cx - r / 2, cy + r + 4, 4, 2, RGB(120, 108, 150));
-    cv_ellipse(cx + r / 2, cy + r + 4, 4, 2, RGB(120, 108, 150));
+    cv_rect(cx - r / 2 - 4, cy + r + 2, 7, 3, RGB(200, 190, 230));
+    cv_rect(cx + r / 2 - 3, cy + r + 2, 7, 3, RGB(200, 190, 230));
     {   /* eyes: big and white; wide when bonked; shut (a line) when asleep */
         int32_t ex = r * 2 / 5 * sx >> 8, ey = by - ry / 4, er = r / 3 + hit / 80;
         if (sleep || blink) {
-            cv_rect(cx - ex - er, ey, 2 * er, 2, RGB(170, 170, 190));
-            cv_rect(cx + ex - er, ey, 2 * er, 2, RGB(170, 170, 190));
+            cv_rect(cx - ex - er, ey, 2 * er, 2, RGB(220, 220, 235));
+            cv_rect(cx + ex - er, ey, 2 * er, 2, RGB(220, 220, 235));
         } else {
             int32_t look = hit ? 0 : isin(seed * 40503u, 2);
-            cv_ellipse(cx - ex, ey, er, er + 1, RGB(250, 250, 255));
-            cv_ellipse(cx + ex, ey, er, er + 1, RGB(250, 250, 255));
+            cv_ellipse(cx - ex, ey, er, er + 1, RGB(255, 255, 255));
+            cv_ellipse(cx + ex, ey, er, er + 1, RGB(255, 255, 255));
             cv_ellipse(cx - ex + look, ey + 1, er / 2, er / 2, RGB(0, 0, 0));
             cv_ellipse(cx + ex + look, ey + 1, er / 2, er / 2, RGB(0, 0, 0));
         }
         if (!sleep && lv > 1500) {                                    /* singing: a mouth in its colour */
             int32_t m = 1 + (lv >> 13);
-            cv_ellipse(cx, ey + er + 4 + m, 3, m, rgbk(col, 200));
+            cv_ellipse(cx, ey + er + 4 + m, 3, m, rgbk(col, 256));
         }
     }
 }
@@ -150,21 +153,37 @@ static int creature_cell(uint32_t v, int force)
     cre[v].ph += (vs[v].inc[0] >> 9) + 3000000u;                      /* sings with its pitch */
     bob = sleep ? isin(now * 1200000u, 1) : isin(cre[v].ph, 1 + (lv >> 14));
     h = (uint32_t)(lv >> 9) * 31u + (uint32_t)hit * 7u + (uint32_t)bob * 131u + (uint32_t)blink * 3u +
-        (sleep ? 0u : (now >> 7)) + (v == ui.voice) * 997u + ui.latched[v] * 4441u;
+        (sleep ? 0u : (now >> 7)) + (v == ui.voice) * 997u + ui.latched[v] * 4441u + ui.pad_gate[v] * 7919u +
+        (uint32_t)pt.v[v][VP_GSRC] * 104729u;
     if (!force && h == cre[v].drawn)
         return 0;
     cre[v].drawn = h;
     cv_begin(CW, CH, C_BG);
-    creature(CW / 2, 31 + bob, 17, lv, hit, sleep, blink, VCOL[v], sleep ? fuzz_seed >> 4 : fuzz_seed + v);
+    creature(CW / 2 + 3, 31 + bob, 16, lv, hit, sleep, blink, VCOL[v], sleep ? fuzz_seed >> 4 : fuzz_seed + v);
     if (t < 256)
-        hammer(CW / 2, 31 - 17, t);
+        hammer(CW / 2 + 3, 31 - 16, t);
     if (sleep && ((now >> 10) + v) % 4u == 0u)
-        cv_text(CW / 2 + 14, 10 - (int32_t)((now >> 6) & 7u), &FONT_S, "z", RGB(110, 100, 150));
-    if (ui.latched[v])                                                /* HOLD: a dot of its colour */
-        cv_ellipse(6, CH - 6, 3, 3, rgbk(VCOL[v], 230));
-    if (v == ui.voice) {                                              /* selected: a white marker */
-        cv_rect(CW / 2 - 9, CH - 3, 18, 3, RGB(240, 240, 250));
+        cv_text(CW / 2 + 16, 4 - (int32_t)((now >> 6) & 7u), &FONT_L, "z", RGB(140, 130, 190));
+    {   /* its number, big, and how its gate runs: HOLD (a solid square), held now (a ring), SEQ (steps),
+         * LFO (a wave) */
+        char d[2] = {(char)('1' + v), 0};
+        uint32_t gs = (uint32_t)pt.v[v][VP_GSRC];
+        uint16_t c = rgbk(VCOL[v], 256);
+        cv_text(1, -4, &FONT_L, d, c);
+        if (ui.latched[v])
+            cv_rect(CW - 11, CH - 12, 9, 9, c);
+        else if (ui.pad_gate[v])
+            cv_circle(CW - 7, CH - 8, 4, c);
+        if (gs == GS_SEQ) {
+            cv_rect(2, CH - 6, 3, 4, c), cv_rect(6, CH - 9, 3, 7, c), cv_rect(10, CH - 12, 3, 10, c);
+        } else if (gs == GS_LFOA || gs == GS_LFOB) {
+            int32_t i;
+            for (i = 0; i < 12; i++)
+                cv_rect(2 + i, CH - 7 + isin((uint32_t)i * 0x15555555u, 4), 1, 2, c);
+        }
     }
+    if (v == ui.voice)                                                /* selected: a white bar */
+        cv_rect(CW / 2 - 12, CH - 3, 24, 3, RGB(255, 255, 255));
     cv_blit(CW * (v & 3u), (uint32_t)CH * (v >> 2u));
     return 1;
 }
@@ -503,6 +522,18 @@ static void draw_scene(void)
         const felucca_font_t *f = text_w(&FONT_XL, big.val) <= 236 ? &FONT_XL : &FONT_L;
         cv_text(4, 0, &FONT_L, big.label, rgbk(c, 170));
         text_c(120, 82 - f->h, f, big.val, rgbk(c, 256));
+    } else if ((int32_t)(ui.intro_until - now) > 0 && !ui.settings) {   /* a new page: its four knobs */
+        uint32_t k;
+        for (k = 0; k < 4u; k++) {
+            uint32_t i = ui.sub * 4u + k;
+            char lb[16];
+            if (i >= ui.nit || ui.it[i].kind == IK_NONE)
+                continue;
+            it_label(&ui.it[i], lb, sizeof lb);
+            lb[7] = 0;
+            cv_rect(120 * (int32_t)(k & 1u) + 2, 40 * (int32_t)(k >> 1) + 2, 6, 34, rgbk(KCOL[k], 256));
+            cv_text(120 * (int32_t)(k & 1u) + 12, 40 * (int32_t)(k >> 1) + 4, &FONT_L, lb, rgbk(KCOL[k], 256));
+        }
     } else if ((int32_t)(ui.msg_until - now) > 0) {
         text_c(120, 24, &FONT_L, ui.msg, RGB(255, 80, 200));
     } else if (ui.settings)
@@ -550,11 +581,95 @@ static void draw_header(void)
     cv_blit(0, 124);
 }
 
+/* HELP (KNOB BANK held): big, simple maps, a panel every 2.5 s (K2: the next) */
+static void help_lines(const char *title, const char *const *ln, uint32_t n, const uint8_t (*col)[3])
+{
+    uint32_t i;
+    text_c(120, 0, &FONT_L, title, RGB(255, 255, 255));
+    for (i = 0; i < n; i++)
+        cv_text(6, 30 + 29 * (int32_t)i, &FONT_L, ln[i], col ? rgbk(col[i], 256) : RGB(220, 220, 240));
+}
+static void draw_help(void)
+{
+    static const char *const K14[4] = {"K1 MASTER", "K2 PAGE", "K3 VOICE", "K4 TUNING"};
+    static const char *const B1[6] = {"ARP   VOICE", "REPEAT MUTE", "CHORD ENV", "GLOBE MIX", "SCALE TUNE", "BT    NOISE"};
+    static const char *const B2[6] = {"PARA  VCO", "SEQ   SEQ", "REC   LFO", "KNOB  FILTER", "FX    FX", "PATCH SCENES"};
+    static const char *const W[6] = {"PITCH BEND", "MOD   FILTER", "ARP+  CHAOS", "CHORD+ HOLD", "< >   VOICE", "PLAY  RUN"};
+    uint32_t p, k;
+    if (fm1_ms - ui.help_t >= 2500u) {
+        ui.help_t = fm1_ms;
+        ui.help_panel = (uint8_t)((ui.help_panel + 1u) % 6u);
+    }
+    p = ui.help_panel;
+    cv_begin(240, 120, RGB(0, 0, 0));
+    if (p == 0u) {                                   /* the pads */
+        text_c(120, 0, &FONT_L, "PADS", RGB(255, 255, 255));
+        for (k = 0; k < 16u; k++) {
+            static const char BOT[8] = {'1', '2', '3', '4', '5', 'P', 'L', 'R'};
+            int32_t x = 1 + 30 * (int32_t)(k & 7u), y = k < 8u ? 36 : 76;
+            char d[2] = {k < 8u ? (char)('1' + k) : BOT[k - 8u], 0};
+            uint16_t c = k < 8u ? rgbk(VCOL[k], 256) : k < 13u ? RGB(150, 70, 255) : k == 13u ? RGB(255, 210, 40)
+                                                                                      : RGB(40, 230, 170);
+            cv_rect(x, y, 28, 36, c);
+            text_c(x + 14, y + 2, &FONT_L, d, RGB(0, 0, 0));
+        }
+    } else if (p == 1u) {
+        help_lines("KNOBS", K14, 3, 0);
+    } else if (p == 2u) {                            /* this page's four, in their colours */
+        text_c(120, 0, &FONT_L, "K5-K8", RGB(255, 255, 255));
+        text_c(120, 50, &FONT_XL, PAGE_NAME[ui.page], RGB(255, 255, 255));
+    } else
+        help_lines(p == 3u ? "BUTTONS" : p == 4u ? "BUTTONS" : "MORE", p == 3u ? B1 : p == 4u ? B2 : W, 3, 0);
+    cv_blit(0, 0);
+    cv_begin(240, 120, RGB(0, 0, 0));
+    if (p == 0u) {
+        text_c(120, 8, &FONT_L, "TOP  VOICES", RGB(220, 220, 240));
+        text_c(120, 44, &FONT_L, "BOTTOM SEQ", RGB(150, 70, 255));
+        text_c(120, 80, &FONT_L, "P PULSE L R FX", RGB(40, 230, 170));
+    } else if (p == 1u) {
+        cv_text(6, 2, &FONT_L, K14[3], RGB(220, 220, 240));
+        text_c(120, 44, &FONT_L, "K5-K8 PAGE", RGB(220, 220, 240));
+    } else if (p == 2u) {
+        page_build();
+        for (k = 0; k < 4u; k++) {
+            uint32_t i = ui.sub * 4u + k;
+            char lb[16] = "-";
+            if (i < ui.nit && ui.it[i].kind != IK_NONE)
+                it_label(&ui.it[i], lb, sizeof lb);
+            lb[9] = 0;
+            cv_rect(4, 4 + 29 * (int32_t)k, 8, 24, rgbk(KCOL[k], 256));
+            cv_text(20, 29 * (int32_t)k - 2, &FONT_L, lb, rgbk(KCOL[k], 256));
+        }
+    } else {
+        const char *const *L = p == 3u ? B1 : p == 4u ? B2 : W;
+        for (k = 3; k < 6u; k++)
+            cv_text(6, 1 + 29 * (int32_t)(k - 3u), &FONT_L, L[k], RGB(220, 220, 240));
+    }
+    for (k = 0; k < 6u; k++)                         /* which panel */
+        cv_rect(84 + 12 * (int32_t)k, 112, 8, 6, k == p ? RGB(255, 255, 255) : RGB(70, 66, 90));
+    cv_blit(0, 120);
+}
+
 static void draw_frame(void)
 {
-    static uint32_t t_cre, t_scene, last;
-    static uint8_t hdr_page = 0xFF, hdr_sub, hdr_voice, hdr_set;
+    static uint32_t t_cre, t_scene, last, t_help;
+    static uint8_t hdr_page = 0xFF, hdr_sub, hdr_voice, hdr_set, in_help;
     uint32_t now = fm1_ms, v;
+    if (ui.help) {
+        if (!in_help || now - t_help >= 200u) {
+            in_help = 1;
+            t_help = now;
+            draw_help();
+        }
+        return;
+    }
+    if (in_help) {                                   /* back from HELP: everything anew */
+        in_help = 0;
+        hdr_page = 0xFF;
+        for (v = 0; v < NV; v++)
+            cre[v].drawn = 0;
+        lcd_fill(0, 0, 240, 240, C_BG);
+    }
     if (now - t_cre >= 40u) {                        /* creatures: only the cells that changed */
         sun_tick(now - last);
         last = now;

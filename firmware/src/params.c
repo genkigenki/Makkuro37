@@ -48,7 +48,7 @@ static const pdesc_t VDESC[3][VP_N] = {
         {"GATE", 0, GS_N - 1, GS_PAD, F_ENUM, N_GSRC}, {"VOLUME", 0, 127, 80, F_NUM, 0},
         {"PAN", 0, 127, 64, F_PAN, 0}, {"TONE", 0, 127, 76, F_NUM, 0}},
     [VT_VCO] = {
-        {"WAVE", 0, 5, W_SAW, F_ENUM, N_WAVE}, {"PW/SHAPE", 0, 127, 64, F_NUM, 0},
+        {"WAVE", 0, 5, W_SAW, F_ENUM, N_WAVE}, {"SHAPE", 0, 127, 64, F_NUM, 0},
         {"OCTAVE", 0, 7, 4, F_ENUM, N_OCT}, {"TUNE", -600, 600, 0, F_CENTS, 0},
         {"FM", 0, 127, 0, F_NUM, 0}, {"SYNC", 0, 1, 0, F_ONOFF, 0},
         {"DECAY", 0, 127, 70, F_NUM, 0}, {"SUSTAIN", 0, 127, 100, F_NUM, 0},

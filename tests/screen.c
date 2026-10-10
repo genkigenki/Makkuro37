@@ -168,5 +168,24 @@ int main(int argc, char **argv)
     big_show(1, "TUNE 2", "G2+12");
     run(100);
     shot(dir, "overlay_value");
+    big.until = 0;
+    page_go(PG_ENV);
+    run(100);
+    shot(dir, "overlay_intro");
+    ui.intro_until = 0;
+    ui.help = 1;
+    {
+        uint32_t k;
+        for (k = 0; k < 6u; k++) {
+            char n[16];
+            ui.help_panel = (uint8_t)k;
+            ui.help_t = fm1_ms;
+            draw_frame();
+            snprintf(n, sizeof n, "help_%u", k);
+            shot(dir, n);
+            fm1_ms += 300;
+        }
+    }
+    ui.help = 0;
     return 0;
 }

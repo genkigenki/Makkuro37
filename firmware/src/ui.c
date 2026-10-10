@@ -8,7 +8,7 @@ static const char *const PAGE_NAME[PG_N] = {"VOICE", "MUTE/MOD", "ENV", "MIX", "
 /* button ids (smk_input.h) */
 enum { B_KNOBBANK, B_FADERBANK, B_LEFT, B_RIGHT, B_OCTDN, B_OCTUP, B_ARP, B_REPEAT, B_SCALE, B_CHORD, B_GLOBE,
        B_BT, B_PATCH, B_PARA, B_FX, B_SEQ, B_PLAY, B_REC };
-static const int8_t BTN_PAGE[18] = {PG_FILTER, -1, -1, -1, -1, -1, PG_VOICE, PG_MUTEMOD, PG_TUNING, PG_ENV, PG_MIX,
+static const int8_t BTN_PAGE[18] = {-1, -1, -1, -1, -1, -1, PG_VOICE, PG_MUTEMOD, PG_TUNING, PG_ENV, PG_MIX,
                                     PG_VOICE, PG_SCENES, PG_VOICE, PG_FX, PG_SEQ, -1, PG_LFO};
 
 enum { IK_NONE, IK_V, IK_VBIT, IK_G, IK_GBIT, IK_SET, IK_ACT };
@@ -39,6 +39,8 @@ static struct {
     uint32_t tap_t;                        /* PULSER pad: last tap */
     uint8_t fx_off;                        /* bit 0 / 1: effector L / R off (pads 15, 16) */
     uint8_t morph, morph_on;               /* SCENES: MORPH 0..127 from the sound as it was to the slot */
+    uint8_t help, help_panel;              /* KNOB BANK held: the help panels */
+    uint32_t knob_down, help_t, intro_until;   /* (ms) KNOB BANK pressed, panel shown, page intro until */
 } ui;
 
 static void keys_poll(void);
@@ -153,7 +155,7 @@ static uint32_t page_subs(void) { return ui.nit ? (ui.nit + 3u) / 4u : 1u; }
 static const pdesc_t *it_desc(const item_t *it)
 {
     static const pdesc_t BIT = {0, 0, 1, 0, F_ONOFF, 0};
-    static const pdesc_t SET[SET_N] = {{"PAD LIGHT", 1, 8, 4, F_NUM, 0}, {"CONSOLE", 0, 1, 1, F_ONOFF, 0},
+    static const pdesc_t SET[SET_N] = {{"LIGHT", 1, 8, 4, F_NUM, 0}, {"CONSOLE", 0, 1, 1, F_ONOFF, 0},
                                        {"BOOT", 0, 8, 0, F_NUM, 0}};
     switch (it->kind) {
     case IK_V: return &VDESC[VTYPE[ui.voice]][it->id];
@@ -568,6 +570,7 @@ static void faders_poll(void)
 /* ------------------------------------------------------------- buttons --- */
 static void page_go(uint32_t pg)
 {
+    ui.intro_until = fm1_ms + 1500u;                   /* the page's four knobs, big, for a moment */
     if (ui.settings) {
         ui.settings = 0;
         settings_save();
@@ -626,6 +629,9 @@ static void buttons_poll(void)
         case B_PATCH:
             ui.patch_down = fm1_ms | 1u;
             break;
+        case B_KNOBBANK:                   /* tap: FILTER; held: HELP */
+            ui.knob_down = fm1_ms | 1u;
+            break;
         case B_PLAY:
             pt.g[G_RUN] = (int16_t)!pt.g[G_RUN];
             ui.dirty = 1;
@@ -647,6 +653,18 @@ static void buttons_poll(void)
             else
                 hold_all();
         }
+    }
+    if ((rel >> B_KNOBBANK) & 1u && ui.knob_down) {
+        if (!ui.help)
+            page_go(PG_FILTER);
+        ui.help = 0;
+        ui.knob_down = 0;
+        ui.dirty = 1;
+    }
+    if (ui.knob_down && !ui.help && fm1_ms - ui.knob_down >= 500u) {
+        ui.help = 1;
+        ui.help_panel = 0;
+        ui.help_t = fm1_ms;
     }
     if ((rel >> B_PATCH) & 1u && ui.patch_down) {           /* PATCH: tap = SCENES, held = settings */
         if (ui.settings) {
@@ -676,8 +694,14 @@ static void knobs_poll(void)
         big_show(9, "MASTER", b);
         ui.dirty = 1;
     }
-    if ((s = fm1_enc_take(1)) != 0) {                       /* K2 pages (and their fours) */
+    if ((s = fm1_enc_take(1)) != 0 && ui.help) {            /* K2 in HELP: the next panel */
+        ui.help_panel = (uint8_t)(ui.help_panel + (s > 0 ? 1u : 5u)) % 6u;
+        ui.help_t = fm1_ms;
+        s = 0;
+    }
+    if (s != 0) {                                           /* K2 pages (and their fours) */
         int32_t pos = ui.page * 8 + ui.sub;
+        ui.intro_until = fm1_ms + 1500u;
         if (ui.settings)
             ui.settings = 0, settings_save();
         while (s) {
