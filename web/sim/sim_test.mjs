@@ -36,6 +36,21 @@ let lit = 0;
 for (let i = 0; i < 240 * 124; i++) if (fb[i] > 0x2000) lit++;
 check(`creatures on the screen (${lit} bright pixels)`, lit > 3000);
 ex.sim_enc(4, 3); run(0.2);
+// one logic: a button opens its menu at page 1, < > wrap, PATCH = home, KNOB BANK = PRESETS, a MINE pad held = save
+const tap = (b) => { ex.sim_button(b, 1); run(0.05); ex.sim_button(b, 0); run(0.05); };
+const menu = () => ex.sim_ui() >> 16, pg = () => (ex.sim_ui() >> 8) & 255;
+tap(13);                                                 // PARA: SOUND
+check("PARA opens SOUND at page 1", menu() === 1 && pg() === 0);
+tap(2);
+check("< wraps to the last page", pg() === 8);
+tap(12);
+check("PATCH: home", menu() === 0);
+tap(0);
+check("KNOB BANK: PRESETS", menu() === 10);
+for (let i = 0; i < 6; i++) tap(3);                      // > to MINE (the 7th theme)
+ex.sim_pad(2, 110); run(1.2); ex.sim_pad(2, 0); run(0.1);
+check("MINE: a pad held 1 s saves", (ex.sim_user_used() & 4) !== 0 && (ex.sim_ui() & 255) === 96 + 2);
+tap(12);
 check(`cost: ${(load * 100).toFixed(1)} % of real time`, load < 0.5);
 if (process.argv[3]) {
   const out = Buffer.alloc(240 * 240 * 3);

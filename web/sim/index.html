@@ -117,10 +117,10 @@ function drawFb(fb) {
 }
 
 // ---- buttons (HAL ids): SMK name, what it does in Makkuro37
-const BTN = [["KNOB BANK", "HOME · held HELP"], ["FADER BANK", "faders A / B"], ["<", "page"], [">", "page"],
-  ["OCTAVE-", "transpose"], ["OCTAVE+", "transpose"], ["ARP", "KEYS"], ["NOTE REPEAT", "MOD"], ["SCALE", "TUNING"],
-  ["CHORD", "ENV"], ["GLOBE", "MIX"], ["BT", "LFO"], ["PATCH", "PRESETS"], ["PARA", "VOICE"],
-  ["FX", "FX"], ["SEQ", "SEQ"], ["SEQ PLAY", "FREE-PLAY"], ["SEQ REC", "HOLD"]];
+const BTN = [["KNOB BANK", "PRESETS · held HELP"], ["FADER BANK", "FX on / off"], ["<", "page"], [">", "page"],
+  ["OCTAVE-", "transpose"], ["OCTAVE+", "transpose"], ["ARP", "KEYS"], ["NOTE REPEAT", "MOTION"], ["SCALE", "TUNING"],
+  ["CHORD", "ENVELOPE"], ["GLOBE", "MIX"], ["BT", "-"], ["PATCH", "HOME · held SETUP"], ["PARA", "SOUND"],
+  ["FX", "EFFECTS"], ["SEQ", "SEQUENCER"], ["SEQ PLAY", "FREE-PLAY"], ["SEQ REC", "HOLD"]];
 const btnEl = [];
 function button(b, parent) {
   const el = mk("btn", `${BTN[b][0]}<small>${BTN[b][1]}</small>`);
@@ -150,7 +150,7 @@ for (let e = 0; e < 8; e++) {
 // ---- pads: hardware 0..7 top row, 8..15 bottom row
 const padEl = [];
 for (let p = 0; p < 16; p++) {
-  const el = mk("pad", `<i>${p < 8 ? p + 1 : ["1", "2", "3", "4", "5", "P", "H", "C"][p - 8]}</i>`);
+  const el = mk("pad", `<i>${p < 8 ? p + 1 : ["", "", "", "", "", "P", "H", "C"][p - 8]}</i>`);
   el.style.setProperty("--c", KC[p & 7] + "88");
   el.addEventListener("pointerdown", (ev) => { el.setPointerCapture(ev.pointerId); send({ type: "pad", pad: p, vel: ev.shiftKey ? 40 : 110 }); });
   el.addEventListener("pointerup", () => send({ type: "pad", pad: p, vel: 0 }));
@@ -158,10 +158,10 @@ for (let p = 0; p < 16; p++) {
   $("mid").appendChild(el);
 }
 
-// ---- faders (as the simulated device starts: cutoff open, a little resonance, slow filter LFO, no depth)
-const FV = [112, 16, 40, 0];
+// ---- faders, fixed: cutoff, resonance, movement (the filter's LFO), space (as the simulated device starts)
+const FV = [112, 16, 0, 60];
 for (let i = 0; i < 4; i++) {
-  const d = mk("", `<input class="v" type="range" min="0" max="127" value="${FV[i]}"><div class="lab">F${i + 1}</div>`);
+  const d = mk("", `<input class="v" type="range" min="0" max="127" value="${FV[i]}"><div class="lab">${["CUTOFF", "RESO", "MOVE", "SPACE"][i]}</div>`);
   d.firstChild.addEventListener("input", (ev) => send({ type: "fader", i, v: +ev.target.value }));
   $("faders").appendChild(d);
 }

@@ -95,25 +95,24 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 #include "../../firmware/src/params.c"
 #include "../../firmware/src/presets.c"
 
-/* ---- scenes in RAM (this session) ---- */
-#define NSCENE 8u
-static uint8_t scene_used;
-static struct { uint8_t bright, console, boot_scene, scene, speaker; } settings = {4, 0, 0, 0, 0};
-static patch_t scenes[NSCENE];
-static int scene_save(uint32_t n)
+/* ---- the user presets (MINE) in RAM (this session) ---- */
+#define NUSER 16u
+static uint16_t user_used;
+static struct { uint8_t bright, console, rsv0, user, speaker; } settings = {4, 0, 0, 0, 0};
+static patch_t users[NUSER];
+static int user_save(uint32_t n)
 {
-    if (n >= NSCENE) return -1;
-    scenes[n] = pt;
-    scene_used |= (uint8_t)(1u << n);
+    if (n >= NUSER) return -1;
+    users[n] = pt;
+    user_used |= (uint16_t)(1u << n);
     return 0;
 }
-static int scene_load_to(uint32_t n, patch_t *d)
+static int user_load_to(uint32_t n, patch_t *d)
 {
-    if (n >= NSCENE || !((scene_used >> n) & 1u)) return -2;
-    *d = scenes[n];
+    if (n >= NUSER || !((user_used >> n) & 1u)) return -2;
+    *d = users[n];
     return 0;
 }
-static int scene_load(uint32_t n) { return scene_load_to(n, &pt); }
 static void settings_save(void) {}
 
 #include "../../firmware/src/ui.c"
@@ -141,8 +140,8 @@ EXPORT void sim_init(void)
     ui_init();
     fm1_in.wheel[0] = 540;                       /* (the wheels at rest) */
     fm1_in.wheel[1] = 615;
-    for (i = 0; i < 4u; i++)                     /* (as the page's faders start: cutoff, a little resonance) */
-        fm1_in.fader[i] = (uint8_t)(i == 0u ? 112 : i == 1u ? 16 : i == 2u ? 40 : 0);
+    for (i = 0; i < 4u; i++)                     /* (as the page's faders start) */
+        fm1_in.fader[i] = (uint8_t)(i == 0u ? 112 : i == 1u ? 16 : i == 2u ? 0 : 60);
     lcd_fill(0, 0, 240, 240, C_BG);
     main_step();
 }
@@ -174,6 +173,8 @@ EXPORT uint16_t *sim_fb(void) { return fb; }
 EXPORT uint32_t sim_draws(void) { return fb_draws; }
 EXPORT uint32_t *sim_pads(void) { return pad_rgb; }
 EXPORT uint32_t sim_leds(void) { return btn_leds; }
+EXPORT uint32_t sim_ui(void) { return (uint32_t)ui.menu << 16 | (uint32_t)ui.page << 8 | ui.preset; }   /* (tests) */
+EXPORT uint32_t sim_user_used(void) { return user_used; }
 EXPORT uint32_t sim_cpu_peak(void) { return (uint32_t)syn.peak; }
 EXPORT void sim_pad(uint32_t pad, uint32_t vel)  /* vel 0 = release */
 {
