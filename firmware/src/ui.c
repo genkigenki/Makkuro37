@@ -2,8 +2,8 @@
  * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
 /* Controls. The screen is laid out as the panel: K1..K8 above the 8 pad columns, so column i is voice i
  * everywhere. Main screen: Ki = voice i's pitch, top pad i its gate. Every button opens one menu; a menu's
- * pages (< >) show 8 values in the 8 columns, the knob above each sets it. Dialogs: green pad OK, red pad
- * CANCEL. */
+ * pages (< >) show 8 values in the 8 columns, the knob above each sets it. The faders are absolute: where
+ * they stand is what sounds. A question (SAVE over a used slot): green pad OK, red pad CANCEL. */
 enum { MN_HOME, MN_VOICE, MN_ENV, MN_MOD, MN_MIX, MN_VOLUME, MN_TUNING, MN_LFO, MN_SEQ, MN_FX, MN_KEYS,
        MN_PRESETS, MN_SETUP, MN_N };
 static const char *const MENU_NAME[MN_N] = {"", "VOICE", "ENV", "MOD", "MIX", "VOLUME", "TUNING", "LFO", "SEQ",
@@ -925,10 +925,22 @@ static void buttons_poll(void)
                 preset_load((ui.preset + NPRESET + (uint32_t)d) % NPRESET);
                 ui_say(PRESET_NAME[ui.preset], 0);
             }
-            else if (ui.menu == MN_PRESETS && ui.page == 0u) {   /* the themes: a page of 14 each */
-                uint32_t np = (NPRESET + PRESET_PAGE - 1u) / PRESET_PAGE, pg = (ui.pre_sel / PRESET_PAGE + np + (uint32_t)d) % np;
-                ui.pre_sel = (uint8_t)(pg * PRESET_PAGE);
-                preset_load(ui.pre_sel);
+            else if (ui.menu == MN_PRESETS && ui.page == 0u) {   /* the themes (16 each), then LOAD SAVE MORPH */
+                int32_t pg = (int32_t)(ui.pre_sel / PRESET_PAGE) + d;
+                if (pg < 0 || pg >= (int32_t)NTHEME) {
+                    ui.page = (uint8_t)(pg < 0 ? 3u : 1u);
+                } else {
+                    ui.pre_sel = (uint8_t)((uint32_t)pg * PRESET_PAGE);
+                    preset_load(ui.pre_sel);
+                }
+            }
+            else if (ui.menu == MN_PRESETS) {           /* LOAD SAVE MORPH, then back to the themes */
+                int32_t pg = (int32_t)ui.page + d;
+                ui.page = (uint8_t)(pg < 1 || pg > 3 ? 0 : pg);
+                if (!ui.page) {                         /* (the first or last theme; the one playing if there) */
+                    uint32_t th = d > 0 ? 0u : NTHEME - 1u;
+                    ui.pre_sel = (uint8_t)(ui.preset / PRESET_PAGE == th ? ui.preset : th * PRESET_PAGE);
+                }
             }
             else {
                 uint32_t n = menu_build();
@@ -969,8 +981,7 @@ static void buttons_poll(void)
                 menu_go((uint32_t)BTN_MENU[b]);
         }
     }
-    /* KNOB BANK: tap = home, held = HELP; PATCH: tap = PRESETS, held = SETUP; SEQ REC: tap = record / loop /
-     * stop, held = record anew */
+    /* KNOB BANK: tap = home, held = HELP; PATCH: tap = PRESETS, held = SETUP */
     if ((rel >> B_KNOBBANK) & 1u) {
         if (!ui.help)
             menu_go(MN_HOME);
