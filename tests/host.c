@@ -11,6 +11,8 @@
 #include "../firmware/src/synth.h"
 #include "../firmware/src/tuning.c"
 #include "../firmware/src/synth.c"
+#include "../firmware/src/fx.c"
+#include "../firmware/src/mix.c"
 #include "../firmware/src/params.c"
 
 static int fails;
@@ -80,6 +82,10 @@ static void reset(void)
     memset((void *)gate_in, 0, sizeof gate_in);
     key_gate = 0;
     memset(&md, 0, sizeof md);
+    memset(fx, 0, sizeof fx);
+    memset(flt, 0, sizeof flt);
+    memset(&syn, 0, sizeof syn);
+    fx_mute = 0;
     patch_init(&pt);
 }
 #define SEC(s) ((uint32_t)((s) * FS / CTL))
@@ -147,6 +153,24 @@ static void s_seq(uint32_t b)                      /* voice 1 gated by the seque
     pt.v[3][VC_EG] = EG_HOLD;
     gate_in[3] = 1;
 }
+static int fx_type;
+static void s_fx(uint32_t b)                       /* voices 1 + 3 into one cartridge on both sides */
+{
+    gate_in[0] = b < SEC(2);
+    gate_in[3] = b > SEC(0.5) && b < SEC(1.0);
+    pt.g[G_FXL] = pt.g[G_FXR] = (int16_t)fx_type;
+    pt.g[G_BLEND] = 90;
+    pt.g[G_FXLY] = pt.g[G_FXRY] = 90;
+    pt.v[0][VP_ATT] = 5;
+    pt.v[0][VP_RLS] = 20;
+}
+static void s_filter(uint32_t b)                   /* voice 1 through a resonant sweep, driven */
+{
+    gate_in[0] = 1;
+    pt.g[G_FFL] = pt.g[G_FFR] = (int16_t)(127 - (b * 127 / SEC(4) > 127 ? 127 : b * 127 / SEC(4)));
+    pt.g[G_FRL] = pt.g[G_FRR] = 120;
+    pt.g[G_FDRIVE] = 90;
+}
 
 int main(int argc, char **argv)
 {
@@ -172,6 +196,14 @@ int main(int argc, char **argv)
     render(dir, "vco_loop_morph", 5, s_vco_loop, 3000);
     reset();
     render(dir, "seq_lfo", 6, s_seq, 3000);
+    reset();
+    render(dir, "filter_sweep_res", 5, s_filter, 1000);
+    for (fx_type = 1; fx_type < FX_N; fx_type++) {
+        char name[32];
+        snprintf(name, sizeof name, "fx_%s", N_FX[fx_type]);
+        reset();
+        render(dir, name, 5, s_fx, 1000);
+    }
     reset();
     render(dir, "all_voices", 5, s_all, 3000);
     printf(fails ? "host: %d FAILED\n" : "host: all ok\n", fails);

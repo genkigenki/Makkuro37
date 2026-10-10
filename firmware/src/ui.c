@@ -736,6 +736,7 @@ static void ui_input(void)
     faders_poll();
     for (v = 0; v < NV; v++)
         gate_in[v] = ui.pad_gate[v];
+    fx_mute = ui.fx_off;
     if (ui.arm && (int32_t)(fm1_ms - ui.arm_until) > 0) {
         ui.arm = 0;
         ui.dirty = 1;

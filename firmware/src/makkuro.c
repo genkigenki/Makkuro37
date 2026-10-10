@@ -29,6 +29,8 @@ bootguard_t bootguard __attribute__((section(".noinit")));
 #include "synth.h"
 #include "tuning.c"
 #include "synth.c"
+#include "fx.c"
+#include "mix.c"
 #include "params.c"
 
 #define FELUCCA_OTA 1                /* M-UPGRADE update entry (ota.c) */
