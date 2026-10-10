@@ -13,6 +13,7 @@
 #include "../firmware/src/synth.c"
 #include "../firmware/src/analog.c"
 #include "../firmware/src/fx.c"
+#include "../firmware/src/keys.c"
 #include "../firmware/src/mix.c"
 #include "../firmware/src/params.c"
 
@@ -69,7 +70,7 @@ static void render(const char *dir, const char *name, double secs, script_t scri
     wav(path, pcm, nb * CTL);
     {
         double n = nb * 2.0 * CTL, dc = sum / n, rms = __builtin_sqrt(sq / n);
-        int bad = peak < min_peak || dc > 500 || dc < -500;
+        int bad = (min_peak < 0 ? peak > 10 : peak < min_peak) || dc > 500 || dc < -500;   /* (< 0: must be silent) */
         printf("  %-4s %-22s peak %6.0f (%5.1f dBFS)  rms %6.0f  dc %5.0f  limiter %6u  %6.0f ns/block\n",
                bad ? "FAIL" : "ok", name, peak, 20 * __builtin_log10(peak / 32768 + 1e-9), rms, dc,
                syn.overs, ns);
@@ -81,7 +82,8 @@ static void reset(void)
 {
     memset(vs, 0, sizeof vs);
     memset((void *)gate_in, 0, sizeof gate_in);
-    key_gate = 0;
+    memset(&kb, 0, sizeof kb);
+    kb.cents[0] = kb.cents[1] = 4800;
     memset(&md, 0, sizeof md);
     patch_init(&pt);
 #ifdef NOFX
@@ -93,6 +95,8 @@ static void reset(void)
     memset(fx, 0, sizeof fx);
     memset(flt, 0, sizeof flt);
     memset(&syn, 0, sizeof syn);
+    memset(&mst, 0, sizeof mst);
+    mst.env = LIM_T;
     fx_mute = 0;
 }
 #define SEC(s) ((uint32_t)((s) * FS / CTL))
@@ -104,7 +108,18 @@ static void s_v1_volt(uint32_t b)
     pt.v[0][CL_VOLT] = (int16_t)(b * 127 / SEC(4));
 }
 static void s_classic4(uint32_t b) { gate_in[0] = gate_in[1] = gate_in[5] = gate_in[6] = b < SEC(4); }
-static void s_all(uint32_t b) { uint32_t v; for (v = 0; v < NV; v++) gate_in[v] = b < SEC(4); }
+static void s_all(uint32_t b)                      /* all eight: the drones and both VCOs on a key */
+{
+    uint32_t v;
+    for (v = 0; v < NV; v++)
+        gate_in[v] = b < SEC(4);
+    if (b == 0)
+        kb_press(12, 0, 100);
+    if (b == SEC(4))
+        kb_release(12);
+}
+static void s_nothing(uint32_t b) { (void)b; }
+static void s_novco(uint32_t b) { gate_in[3] = gate_in[4] = 1; (void)b; }   /* pads do not start the VCOs */
 static void s_noise3(uint32_t b) { gate_in[2] = b < SEC(4); }
 static void s_noise3_modes(uint32_t b)              /* drone, FM, AM, FM+AM: 1.5 s each, DIVIDER 3 */
 {
@@ -114,29 +129,46 @@ static void s_noise3_modes(uint32_t b)              /* drone, FM, AM, FM+AM: 1.5
     pt.v[2][NZ_RATE] = 70;
 }
 static void s_noise8(uint32_t b) { gate_in[7] = b < SEC(4); }
-static void s_vco_keys(uint32_t b)                  /* a duophonic line with glide, each wave in turn */
+static void s_vco_keys(uint32_t b)                  /* a duophonic line (DUO), each wave in turn */
 {
     static const int8_t LINE[8][2] = {{0, 7}, {2, 9}, {4, 12}, {5, 12}, {7, 16}, {5, 14}, {4, 12}, {0, 7}};
     uint32_t step = b / SEC(0.5);
     pt.v[3][VC_WAVE] = pt.v[4][VC_WAVE] = (int16_t)(step / 2 % 6);
-    key_gate = step < 8;
-    key_cents[0] = 4800 + LINE[step & 7][0] * 100;
-    key_cents[1] = 4800 + LINE[step & 7][1] * 100;
-    if (b % SEC(0.5) == 0)
-        key_trig++;
+    pt.g[G_KEYS] = KM_DUO;
+    if (b % SEC(0.5) == 0) {
+        kb.n = 0;
+        if (step < 8) {
+            kb_press(12 + LINE[step & 7][0], 0, 100);
+            kb_press(12 + LINE[step & 7][1], 1, 100);
+        }
+    }
 }
 static void s_vco_fm_sync(uint32_t b)
 {
-    key_gate = b < SEC(4);
-    key_cents[0] = 3600;
-    key_cents[1] = 3600 + (int32_t)(b * 2400 / SEC(4));
+    if (b == 0)
+        kb_press(0, 0, 100);
+    if (b == SEC(4))
+        kb_release(0);
     pt.v[4][VC_SYNC] = 1;
     pt.v[4][VC_FM] = 60;
     pt.v[3][VC_FM] = 30;
+    pt.v[4][VP_PITCH] = (int16_t)(b * 2400 / SEC(4) > 2400 ? 2400 : b * 2400 / SEC(4));
+}
+static void s_arp(uint32_t b)                       /* the arpeggiator over a held chord, SPLIT off */
+{
+    if (b == 0)
+        kb_press(12, 0, 100), kb_press(16, 0, 100), kb_press(19, 0, 100);
+    pt.g[G_ARP] = AR_UPDOWN, pt.g[G_ARATE] = 90, pt.g[G_AOCT] = 2;
+    pt.v[3][VC_DEC] = 50, pt.v[3][VC_SUS] = 30;
 }
 static void s_vco_loop(uint32_t b)
 {
-    gate_in[3] = b < SEC(4);
+    if (b == 0)
+        kb_press(12, 0, 100);                       /* (a key, then pad 4's hold keeps it) */
+    if (b == 10)
+        kb_release(12), kb.padhold[0] = 1;
+    if (b == SEC(4))
+        kb.padhold[0] = 0;
     pt.v[3][VC_EG] = EG_LOOP;
     pt.v[3][VP_ATT] = 20;
     pt.v[3][VC_DEC] = 50;
@@ -202,6 +234,8 @@ int main(int argc, char **argv)
     reset();
     render(dir, "vco_loop_morph", 5, s_vco_loop, 3000);
     reset();
+    render(dir, "vco_arp", 4, s_arp, 3000);
+    reset();
     render(dir, "seq_lfo", 6, s_seq, 3000);
     reset();
     render(dir, "filter_sweep_res", 5, s_filter, 1000);
@@ -213,6 +247,10 @@ int main(int argc, char **argv)
     }
     reset();
     render(dir, "all_voices", 5, s_all, 3000);
+    reset();
+    render(dir, "vco_no_key_silent", 1, s_novco, -1);
+    reset();
+    render(dir, "nothing_silent", 1, s_nothing, -1);
     printf(fails ? "host: %d FAILED\n" : "host: all ok\n", fails);
     return fails != 0;
 }

@@ -19,7 +19,8 @@ static const char *const N_WAVE[6] = {"SAW", "PULSE", "TRI", "SINE", "SAW<>", "S
 static const char *const N_OCT[8] = {"LO", "64'", "32'", "16'", "8'", "4'", "2'", "1'"};
 static const char *const N_EG[3] = {"GATE", "HOLD", "LOOP"};
 static const char *const N_TSET[TS_N] = {"12-TET", "JUST", "PYTHAG", "24-TET", "RAST", "SLENDRO", "PELOG"};
-static const char *const N_KEYS[2] = {"DUO", "UNISON"};
+static const char *const N_KEYS[3] = {"SINGLE", "DUO", "SPLIT"};
+static const char *const N_ARP[6] = {"OFF", "UP", "DOWN", "UP-DN", "RANDOM", "SEQ"};
 static const char *const N_STAGES[3] = {"3", "4", "5"};
 static const char *const N_FX[FX_N] = {"OFF", "ROOM", "DELAY", "SHIMMER", "CHORUS", "PHASER", "CRUSH", "RING", "FREEZE",
                                        "SPRING", "PLATE"};
@@ -36,7 +37,8 @@ static const pdesc_t VDESC[3][VP_N] = {
         {"ATTACK", 0, 127, 50, F_NUM, 0}, {"RELEASE", 0, 127, 64, F_NUM, 0},
         {"MOD SRC", 0, MS_N - 1, MS_DRIFT, F_ENUM, N_MSRC}, {"MOD AMT", 0, 127, 0, F_NUM, 0},
         {"GATE", 0, GS_N - 1, GS_PAD, F_ENUM, N_GSRC}, {"VOLUME", 0, 127, 96, F_NUM, 0},
-        {"PAN", 0, 127, 64, F_PAN, 0}, {"TONE", 0, 127, 84, F_NUM, 0}},
+        {"PAN", 0, 127, 64, F_PAN, 0}, {"TONE", 0, 127, 84, F_NUM, 0},
+        {"PITCH", -2400, 2400, 0, F_CENTS, 0}},
     [VT_NOISE] = {
         {"PITCH", 0, 127, 70, F_NUM, 0}, {"RANGE", 0, 1, 0, F_ENUM, N_RANGE},
         {"RATE", 0, 127, 40, F_NUM, 0}, {"RATE X", 0, 1, 0, F_ENUM, N_MULT},
@@ -46,7 +48,8 @@ static const pdesc_t VDESC[3][VP_N] = {
         {"ATTACK", 0, 127, 50, F_NUM, 0}, {"RELEASE", 0, 127, 64, F_NUM, 0},
         {"MOD SRC", 0, MS_N - 1, MS_NONE, F_ENUM, N_MSRC}, {"MOD AMT", 0, 127, 0, F_NUM, 0},
         {"GATE", 0, GS_N - 1, GS_PAD, F_ENUM, N_GSRC}, {"VOLUME", 0, 127, 80, F_NUM, 0},
-        {"PAN", 0, 127, 64, F_PAN, 0}, {"TONE", 0, 127, 76, F_NUM, 0}},
+        {"PAN", 0, 127, 64, F_PAN, 0}, {"TONE", 0, 127, 76, F_NUM, 0},
+        {"PITCH", -2400, 2400, 0, F_CENTS, 0}},
     [VT_VCO] = {
         {"WAVE", 0, 5, W_SAW, F_ENUM, N_WAVE}, {"SHAPE", 0, 127, 64, F_NUM, 0},
         {"OCTAVE", 0, 7, 4, F_ENUM, N_OCT}, {"TUNE", -600, 600, 0, F_CENTS, 0},
@@ -56,7 +59,8 @@ static const pdesc_t VDESC[3][VP_N] = {
         {"ATTACK", 0, 127, 10, F_NUM, 0}, {"RELEASE", 0, 127, 60, F_NUM, 0},
         {"MOD SRC", 0, MS_N - 1, MS_NONE, F_ENUM, N_MSRC}, {"MOD AMT", 0, 127, 0, F_NUM, 0},
         {"GATE", 0, GS_N - 1, GS_PAD, F_ENUM, N_GSRC}, {"VOLUME", 0, 127, 96, F_NUM, 0},
-        {"PAN", 0, 127, 64, F_PAN, 0}, {"TONE", 0, 127, 100, F_NUM, 0}},
+        {"PAN", 0, 127, 64, F_PAN, 0}, {"TONE", 0, 127, 100, F_NUM, 0},
+        {"PITCH", -2400, 2400, 0, F_CENTS, 0}},
 };
 
 static const pdesc_t GDESC[G_COUNT] = {
@@ -66,7 +70,7 @@ static const pdesc_t GDESC[G_COUNT] = {
     [G_SNAP] = {"SNAP", 0, 1, 1, F_ONOFF, 0},
     [G_FINE] = {"FINE", -100, 100, 0, F_SIGNED, 0},
     [G_GLIDE] = {"GLIDE", 0, 127, 20, F_NUM, 0},
-    [G_KEYS] = {"KEYS", 0, 1, 0, F_ENUM, N_KEYS},
+    [G_KEYS] = {"KEYS", 0, 2, 1, F_ENUM, N_KEYS},
     [G_LARATE] = {"A RATE", 0, 127, 40, F_NUM, 0},
     [G_LAWAVE] = {"A WAVE", 0, 127, 127, F_NUM, 0},
     [G_LBRATE] = {"B RATE", 0, 127, 60, F_NUM, 0},
@@ -98,10 +102,18 @@ static const pdesc_t GDESC[G_COUNT] = {
     [G_FXRX] = {"R X", 0, 127, 84, F_NUM, 0},
     [G_FXRY] = {"R Y", 0, 127, 60, F_NUM, 0},
     [G_FXRZ] = {"R Z", 0, 127, 50, F_NUM, 0},
-    [G_BLEND] = {"BLEND", 0, 127, 48, F_NUM, 0},
+    [G_BLEND] = {"BLEND L", 0, 127, 48, F_NUM, 0},
     [G_DRIFT] = {"ANALOG", 0, 127, 40, F_NUM, 0},
     [G_WIDTH] = {"WIDTH", 0, 60, 24, F_NUM, 0},
     [G_FMODE] = {"FILTER", 0, 1, 0, F_ENUM, N_FMODE},
+    [G_ARP] = {"ARP", 0, 5, AR_OFF, F_ENUM, N_ARP},
+    [G_ARATE] = {"RATE", 0, 127, 70, F_NUM, 0},
+    [G_AOCT] = {"OCTAVES", 1, 3, 1, F_NUM, 0},
+    [G_ALATCH] = {"LATCH", 0, 1, 0, F_ONOFF, 0},
+    [G_VIBD] = {"VIBRATO", 0, 127, 0, F_NUM, 0},
+    [G_VIBR] = {"VIB RATE", 0, 127, 50, F_NUM, 0},
+    [G_BLENDR] = {"BLEND R", 0, 127, 48, F_NUM, 0},
+    [G_AUTOGATE] = {"AUTO", 0, 255, 0, F_NUM, 0},
 };
 
 /* the power-on sound: four chords on the classic voices, a siren and a wind, two VCOs */

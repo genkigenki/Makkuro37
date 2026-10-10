@@ -6,20 +6,22 @@ static int32_t vol_q15(int32_t v) { v = clamp(v, 0, 127); return v * v * 2; }
 
 static void synth_tick(void)
 {
-    uint32_t v, trig = key_trig;
+    uint32_t v;
     int32_t fine = pt.g[G_FINE], glide = clamp(pt.g[G_GLIDE], 0, 127) * 3 / 4;
     syn.ticks++;
     mod_tick();
+    kb_tick();
     for (v = 0; v < NV; v++) {
         vstate_t *s = &vs[v];
         const int16_t *p = pt.v[v];
         uint32_t gate = gate_in[v] | gate_src((uint32_t)p[VP_GSRC]), vel = gate_vel[v];
         int32_t att = clamp(p[VP_ATT] + (100 - (int32_t)vel) / 3, 0, 127);   /* soft pad: slower swell */
         if (VTYPE[v] == VT_VCO) {
-            gate |= key_gate;
-            if (s->trig != (uint8_t)trig && key_gate)
-                s->gate = 0;                       /* a new key: attack again */
-            s->trig = (uint8_t)trig;
+            uint32_t i = v - 3u;
+            gate = gate_src((uint32_t)p[VP_GSRC]) | kb.gate[i] | (kb.padhold[i] && kb.played);   /* (keys only) */
+            if (s->trig != kb.trig[i] && kb.gate[i])
+                s->gate = 0;                       /* a new key or arp step: attack again */
+            s->trig = kb.trig[i];
             adsr(s, p, gate);
             vco_tick(v, s, p, fine, glide);
         } else {

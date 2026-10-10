@@ -359,7 +359,7 @@ static void fx_run(int32_t *l, int32_t *r, uint32_t n)
 {
     static int32_t in[2][CTL];
     uint32_t s, i;
-    int32_t blend = pt.g[G_BLEND] * 258;
+    int32_t blend;
     for (i = 0; i < n; i++) {              /* each side's input hears a third of the other: a wider space */
         in[0][i] = clamp(l[i] + r[i] / 3, -32767, 32767);
         in[1][i] = clamp(r[i] + l[i] / 3, -32767, 32767);
@@ -376,6 +376,7 @@ static void fx_run(int32_t *l, int32_t *r, uint32_t n)
         int16_t *m = fxmem[s];
         int32_t *x = s ? r : l, tgt, dw;
         uint32_t t = (uint32_t)pt.g[G_FXL + s];
+        blend = pt.g[s ? G_BLENDR : G_BLEND] * 258;
         if (t != f->type) {                /* a new cartridge: clear its memory first (wet muted) */
             f->type = (uint8_t)t;
             f->clr = 1;

@@ -137,7 +137,7 @@ static void classic_tick(vstate_t *s, const int16_t *p, int32_t fine)
     int32_t volt = p[CL_VOLT], trans = -volt * 2400 / 127, mc = mod_cents(p);
     uint32_t g;
     for (g = 0; g < 5u; g++) {
-        int32_t c = GEN_LO[g] * 100 + p[CL_TUNE1 + g] + trans + fine + (drift(s, g) >> 4);
+        int32_t c = GEN_LO[g] * 100 + p[CL_TUNE1 + g] + p[VP_PITCH] + trans + fine + (drift(s, g) >> 4);
         if ((p[CL_MOD] >> g) & 1)
             c += mc;
         s->inc[g] = (p[CL_MUTE] >> g) & 1 ? 0u : cents_inc(c);
@@ -201,7 +201,7 @@ static void noise_tick(vstate_t *s, const int16_t *p, int32_t fine)
     uint32_t clk = (uint32_t)p[NZ_SHCLK];
     if (clk && ((clk_edges >> (clk - 1u)) & 1u))
         s->sh = (int32_t)xorshift(&s->nz) >> 16;   /* S&H on LFO A / B / the pulser */
-    c = lo + p[NZ_PITCH] * (hi - lo) / 127 + fine + mod_cents(p) + ((s->sh * (a * a * 2400 / 16129)) >> 15) +
+    c = lo + p[NZ_PITCH] * (hi - lo) / 127 + p[VP_PITCH] + fine + mod_cents(p) + ((s->sh * (a * a * 2400 / 16129)) >> 15) +
         (drift(s, 0) >> 4);
     s->inc[0] = cents_inc(c);
     if (s->inc[0] > 1u << 28)
@@ -254,8 +254,22 @@ static void noise_render(vstate_t *s, const int16_t *p, int32_t *o, uint32_t n)
 /* ------------------------------------------------------------- VCO --- */
 /* voices 4 + 5: six waves (two of them morphing), octave switch, TUNE, FM (4: feedback, 5: from voice 4),
  * SYNC (5 to 4), ADSR with HOLD / LOOP; pitch from the keys (key_cents), gliding. */
-static int32_t key_cents[2] = {4800, 4800};        /* the keys' pitches for voices 4 / 5 (cents) */
-static volatile uint8_t key_gate, key_trig;        /* a key held; presses so far */
+enum { KM_SINGLE, KM_DUO, KM_SPLIT };                  /* G_KEYS */
+enum { AR_OFF, AR_UP, AR_DOWN, AR_UPDOWN, AR_RANDOM, AR_SEQ };   /* G_ARP */
+/* the keys: held keys in press order, the latched chord, the 16-step key
+ * sequence; per tick (keys.c) the two VCOs' pitch, gate and triggers */
+static struct {
+    int8_t k[8], lk[8], seq[16];           /* key numbers (semitones / degrees from the bottom key, transposed) */
+    uint8_t side[8], vel[8];               /* (the key's half: SPLIT) */
+    volatile uint8_t n, ln, seqlen, rec;
+    volatile uint8_t padhold[2];           /* pads 4 / 5: hold the VCO's last note */
+    volatile uint8_t played;               /* a key was played since power-on: only then can a pad hold one */
+    volatile uint8_t press;                /* presses so far (a new key retriggers) */
+    uint8_t seen, step, dir, on;
+    uint32_t ph, vph;
+    int32_t cents[2], vib;
+    uint8_t gate[2], trig[2];
+} kb = {.cents = {4800, 4800}};
 static const int16_t OCT_CENTS[8] = {-6000, -3600, -2400, -1200, 0, 1200, 2400, 3600};
 enum { VK_W, VK_KU, VK_KD, VK_SHAPE, VK_PW, VK_FM };
 
@@ -292,7 +306,7 @@ static void adsr(vstate_t *s, const int16_t *p, uint32_t gate)
 
 static void vco_tick(uint32_t v, vstate_t *s, const int16_t *p, int32_t fine, int32_t glide)
 {
-    int32_t tgt = (key_cents[v - 3u] + OCT_CENTS[p[VC_OCT] & 7] + p[VC_TUNE] + fine + mod_cents(p) +
+    int32_t tgt = (kb.cents[v - 3u] + kb.vib + OCT_CENTS[p[VC_OCT] & 7] + p[VC_TUNE] + p[VP_PITCH] + fine + mod_cents(p) +
                    ((joy_x * 200) >> 15)) * 16 + drift(s, 0), w;   /* the joystick bends +-2 semitones */
     if (!s->pitch || !glide)
         s->pitch = tgt;
