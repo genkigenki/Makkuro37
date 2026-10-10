@@ -423,33 +423,31 @@ static void presets_screen(void)
     }
     preset_name(n, nm + str_len(nm), sizeof nm - str_len(nm));
     f = text_w(&FONT_XL, nm) <= 236 ? &FONT_XL : &FONT_L;
-    cv_begin(240, 124, C_BG);
-    for (k = 0; k < 8u; k++) {                           /* K1-K8: the filters, a bar each (the type in use lit) */
-        const pdesc_t *d = &GDESC[LENS[k].id];
-        int32_t x = COLW * (int32_t)k, h = (pt.g[LENS[k].id] - d->min) * 16 / (d->max - d->min);
-        int on = LENS[k].mode == NO || pt.g[G_FMODE] == LENS[k].mode;
-        const char *b = LENS[k].name;
-        cv_rect(x + 2, 0, COLW - 4, 3, rgbk(VCOL[k], on ? 256 : 70));
-        cv_rect(x + 8, 22 - h, 14, h, rgbk(VCOL[k], on ? 256 : 70));
-        text_c(clamp(x + COLW / 2, text_w(&FONT_S, b) / 2, 240 - text_w(&FONT_S, b) / 2), (k & 1u) ? 40 : 24,
-               &FONT_S, b, rgbk(VCOL[k], on ? 230 : 90));
+    cv_begin(240, 124, C_BG);                            /* the preset playing, its theme's pads, how to move on */
+    text_c(120, 2, f, nm, RGB(255, 255, 255));
+    for (k = 0; k < 16u; k++) {                          /* the pads as they are lit: one preset each */
+        uint32_t m = base + k, has = m < NPRESET || ((user_used >> (m - NPRESET)) & 1u);
+        int32_t x = 4 + 29 * (int32_t)(k & 7u), y = k < 8u ? 54 : 81;
+        cv_rect(x, y, 25, 25, m == ui.preset ? RGB(255, 255, 255) : rgbk(VCOL[k & 7u], has ? 160 : 30));
     }
-    text_c(120, 60, f, nm, RGB(255, 255, 255));
-    text_c(120, 108, &FONT_S, th < NTHEME ? "< > THEME   KNOBS: FILTERS" : "HOLD A PAD: SAVE", RGB(150, 140, 190));
+    text_c(120, 108, &FONT_S, th < NTHEME ? "< > THEME   PATCH: HOME" : "HOLD A PAD: SAVE", RGB(150, 140, 190));
     cv_blit(0, 32);
     if (ui.dlg)
         return;
-    cv_begin(240, 84, C_BG);
-    if (big_draw(0, 84)) {
-        cv_blit(0, 156);
-        return;
+    cv_begin(240, 84, C_BG);                             /* the knobs: a filter each (a turned one: its value) */
+    if (!big_draw(0, 84)) {
+        text_c(120, 2, &FONT_S, "K1-K8: FILTERS", RGB(150, 140, 190));
+        for (k = 0; k < 8u; k++) {                       /* a bar each, the type in use lit */
+            const pdesc_t *d = &GDESC[LENS[k].id];
+            int32_t x = COLW * (int32_t)k, h = (pt.g[LENS[k].id] - d->min) * 16 / (d->max - d->min);
+            int on = LENS[k].mode == NO || pt.g[G_FMODE] == LENS[k].mode;
+            const char *b = LENS[k].name;
+            cv_rect(x + 2, 22, COLW - 4, 3, rgbk(VCOL[k], on ? 256 : 70));
+            cv_rect(x + 8, 44 - h, 14, h, rgbk(VCOL[k], on ? 256 : 70));
+            text_c(clamp(x + COLW / 2, text_w(&FONT_S, b) / 2, 240 - text_w(&FONT_S, b) / 2), (k & 1u) ? 66 : 48,
+                   &FONT_S, b, rgbk(VCOL[k], on ? 230 : 90));
+        }
     }
-    for (k = 0; k < 16u; k++) {                          /* the pads as they are lit: one preset each */
-        uint32_t m = base + k, has = m < NPRESET || ((user_used >> (m - NPRESET)) & 1u);
-        int32_t x = 4 + 29 * (int32_t)(k & 7u), y = k < 8u ? 2 : 30;
-        cv_rect(x, y, 25, 25, m == ui.preset ? RGB(255, 255, 255) : rgbk(VCOL[k & 7u], has ? 160 : 30));
-    }
-    text_c(120, 56, &FONT_L, "PATCH: HOME", RGB(150, 140, 190));
     cv_blit(0, 156);
 }
 
