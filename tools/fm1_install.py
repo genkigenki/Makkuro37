@@ -19,7 +19,7 @@ Exit codes: 0 done, 1 cancelled or other error, 2 bad arguments or package,
 3 FM-1 not found, 4 connection lost or the device stopped, 5 timeout (no
 loader / no restart), 6 wrong model, another identity after the install, or the
 FM-1 is in the update mode of another firmware (only SLOOP's own loader,
-ota-FM-1_9XX or ota-SMK-37 Pro_9XX, is resumed).
+ota-FM-1_9XX or ota-SMK-37 Pro_9XX / _7XX (Makkuro37), is resumed).
 
 Packages: 20 interleave blocks (FM-1, SLOOP, SMK-37 Pro up to v011) or more (the stock SMK-37 Pro
 v016 has 36: the extra markers are 0x7D); the count is detected and checked with the files' CRCs.
@@ -37,8 +37,8 @@ MAXDATA = 512
 BLOCKS, BLK, KEEP = 20, 0x30, 0x2F         # BLOCKS: the identity blocks (more may follow, see block_count)
 MAX_BLOCKS = 64
 LOADER_MARK = b"FELUCCA-LOADER-1"
-PORT_RE = re.compile(r"fm-1|smk|felucca|melodee|fomni|x0x|ota|composite|sinco|usb-midi", re.I)   # never probe other gear
-OWN_LOADER_RE = re.compile(r"ota-(FM-1|SMK-37 Pro)_9\d\d", re.I)               # SLOOP's own update loader
+PORT_RE = re.compile(r"fm-1|smk|felucca|melodee|fomni|x0x|makkuro|ota|composite|sinco|usb-midi", re.I)   # never probe other gear
+OWN_LOADER_RE = re.compile(r"ota-(FM-1|SMK-37 Pro)_[79]\d\d", re.I)            # SLOOP's / Makkuro37's own loader
 
 # seconds; the tests shorten them
 DELAY = {"open": 0.3, "start": 2.0, "reply": 0.01, "loader": 3.0, "reboot": 3.0, "retry": 1.0,

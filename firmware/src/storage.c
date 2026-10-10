@@ -16,12 +16,10 @@
 #define ST_PAYLOAD_OFF 256u
 #define ST_PAYLOAD_MAX (ST_SECTOR - ST_PAYLOAD_OFF)
 
-/* flash map (FL_DATA 0x97000..0xDFFFF, FL_GLOB 0xFC000..): settings 0xFC000 / 0xFD000, projects
- * 0x97000..0x9EFFF, user sample slots 0xA0000..0xDBFFF (eng_sample.c), user preset banks 0xDC000..0xDFFFF
- * (upreset.c); the working project (autosave, project.c): copy A 0x9F000, copy B 0xFE000 (the two sectors
- * left: A/B needs no two neighbours); the FM6 patch bank (fm6_bank.c, SLOOP 2.4): 0xE5000 / 0xE6000, the first
- * two sectors of the free 0xE5000..0xFBFFF after the update staging (FL_FM6, fm1_flash.h) */
-enum { OBJ_SETTINGS, OBJ_PROJECT0, OBJ_UPRESET0 = OBJ_PROJECT0 + 4, OBJ_AUTOSAVE = OBJ_UPRESET0 + 2, OBJ_FM6BANK, OBJ_COUNT };
+/* Makkuro37 (SMK-37 Pro): FL_DATA 0x9D000.., A/B neighbours: settings 0x9D000 / 0x9E000, scene n at
+ * 0x9F000 + n * 0x2000; the owner tag at 0xAF000 (as every SMK port). Never near BTIF / USRTRIM (0xC0000..)
+ * or key_mac (0xFF000). */
+enum { OBJ_SETTINGS, OBJ_SCENE0, OBJ_COUNT = OBJ_SCENE0 + 8 };
 
 typedef struct {
     uint32_t magic;
@@ -49,20 +47,12 @@ static uint32_t st_crc32(const void *p, uint32_t n)   /* zlib CRC-32, 4 bits per
     return ~c;
 }
 
-#if BOARD_SMK37
-/* SMK-37 Pro (work/spec/system_ota.md 5B): every object in FL_DATA 0x9D000..0xBAFFF (the stock VM),
- * A/B neighbours: projects 0x9D000..0xA4FFF, user preset banks 0xA5000..0xA8FFF, autosave 0xA9000 /
- * 0xAA000, FM6 bank 0xAB000 / 0xAC000, settings 0xAD000 / 0xAE000; 0xAF000..0xBAFFF spare. Never near
- * BTIF / USRTRIM (0xC0000..0xC1FFF) or key_mac (0xFF000). */
 #define ST_SMK_BASE 0x9D000u
 #define ST_SMK_SECTORS (2u * OBJ_COUNT)
 _Static_assert(ST_SMK_BASE + ST_SMK_SECTORS * ST_SECTOR <= 0xBB000u, "SMK store: past FL_DATA");
 static uint32_t st_sector(uint32_t obj, uint32_t copy)  /* flash offset of copy A (0) / B (1) */
 {
-    static const uint8_t ORDER[OBJ_COUNT] = {
-        [OBJ_PROJECT0] = 0, [OBJ_PROJECT0 + 1] = 1, [OBJ_PROJECT0 + 2] = 2, [OBJ_PROJECT0 + 3] = 3,
-        [OBJ_UPRESET0] = 4, [OBJ_UPRESET0 + 1] = 5, [OBJ_AUTOSAVE] = 6, [OBJ_FM6BANK] = 7, [OBJ_SETTINGS] = 8};
-    return ST_SMK_BASE + (ORDER[obj % OBJ_COUNT] * 2u + (copy & 1u)) * ST_SECTOR;
+    return ST_SMK_BASE + ((obj % OBJ_COUNT) * 2u + (copy & 1u)) * ST_SECTOR;
 }
 
 /* The owner of the store. Several FM-1 firmwares are ported to the SMK-37 Pro with the same board layer and
@@ -80,6 +70,7 @@ static uint32_t st_sector(uint32_t obj, uint32_t copy)  /* flash offset of copy 
 #endif
 #define ST_OWNER_OFF (ST_SMK_BASE + ST_SMK_SECTORS * ST_SECTOR)
 _Static_assert(ST_OWNER_OFF + ST_SECTOR <= 0xBB000u, "SMK store owner: past FL_DATA");
+_Static_assert(ST_OWNER_OFF == 0xAF000u, "SMK store owner: the board layer's place");
 static uint8_t st_owner_cleared;                /* (the UI may say so) */
 static void st_owner_check(void)
 {
@@ -104,21 +95,6 @@ static void st_owner_check(void)
     st_erase(ST_OWNER_OFF);
     st_prog(ST_OWNER_OFF, want, 16);
 }
-#else
-static void st_owner_check(void) {}
-static uint32_t st_sector(uint32_t obj, uint32_t copy)  /* flash offset of copy A (0) / B (1) */
-{
-    if (obj == OBJ_SETTINGS)
-        return 0xFC000u + copy * ST_SECTOR;
-    if (obj == OBJ_AUTOSAVE)
-        return copy ? 0xFE000u : 0x9F000u;
-    if (obj == OBJ_FM6BANK)
-        return 0xE5000u + copy * ST_SECTOR;
-    if (obj >= OBJ_UPRESET0 && obj < OBJ_AUTOSAVE)
-        return 0xDC000u + (obj - OBJ_UPRESET0) * 2u * ST_SECTOR + copy * ST_SECTOR;
-    return 0x97000u + (obj - OBJ_PROJECT0) * 2u * ST_SECTOR + copy * ST_SECTOR;
-}
-#endif
 
 static uint8_t st_buf[ST_PAYLOAD_MAX] __attribute__((aligned(4)));
 

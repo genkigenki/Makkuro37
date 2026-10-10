@@ -32,6 +32,9 @@
 #include "fm1_gpio.h"
 #include "fm1_cc.h"
 
+#ifndef SMK_PAD_EVENTS
+#define SMK_PAD_EVENTS 0
+#endif
 #ifndef FM1_INPUT_IDLE
 #define FM1_INPUT_IDLE() ((void)0)
 #endif
@@ -102,17 +105,14 @@ static const uint8_t SMK_WHITE_NOTE[SMK_NPAD] = {0, 2, 4, 6, 7, 9, 11, 12, 14, 1
 static const int8_t SMK_PIANO_NOTE[SMK_NPAD] = {7, 9, 11, 12, 14, 16, 18, 19, 8, 10, -1, 13, 15, 17, -1, 20};
 static volatile uint8_t smk_pad_piano;
 static uint8_t smk_pad_note[SMK_NPAD];   /* the note key a pad pressed (+1; 0 = none): its release ends that one */
-#if MAKKURO37
-static volatile uint16_t smk_pad_pick;   /* Snoop37: pads that go to the UI (picker, TRACKS track pads): a hit sets its bit here, no note */
-static volatile uint16_t smk_pick_hits;  /* bit per hardware pad */
-static volatile uint8_t smk_pad_grid;    /* Snoop37: the pads are a 1..16 grid (steps, tiles): white key w = pad w */
+/* SMK_PAD_EVENTS (Makkuro37): the pads are no note keys; each hit / release is queued as pad << 8 | velocity
+ * (0 = release) for smk_pad_take() */
+#if SMK_PAD_EVENTS
+#define SMK_PADQ 32u
+static volatile uint16_t smk_padq[SMK_PADQ];
+static volatile uint8_t smk_padq_w, smk_padq_r;
 #endif
 #define SMK_WHITE_OF_PAD(p) ((p) < 8u ? (p) + 8u : (p) - 8u)
-#if MAKKURO37
-#define SMK_PAD_OF_KEY(w) (smk_pad_grid ? (w) : SMK_PAD_OF_WHITE(w))   /* white key -> pad, as the pads are now */
-#else
-#define SMK_PAD_OF_KEY(w) SMK_PAD_OF_WHITE(w)
-#endif
 
 #define SMK_TRIM_FLASH 0xC1000u   /* USRTRIM: the factory calibration record ("trimdat"), never written here */
 /* 5-point velocity curves (trimdata, flash 0xC1000: +0x08 16 pads x 5 u16, +0xA8 37 keys x 5 u16) */
@@ -446,19 +446,19 @@ static void fm1__frame(void)
 
 static void smk__padq(uint32_t pad, uint32_t vel)     /* a pad hit (vel) or release (0): its white key */
 {
-#if MAKKURO37
-    int32_t n0 = smk_pad_piano ? SMK_PIANO_NOTE[pad] : (int32_t)SMK_WHITE_NOTE[smk_pad_grid ? pad : SMK_WHITE_OF_PAD(pad)];
-#else
     int32_t n0 = smk_pad_piano ? SMK_PIANO_NOTE[pad] : (int32_t)SMK_WHITE_NOTE[SMK_WHITE_OF_PAD(pad)];
-#endif
     uint32_t n, bit;
-    if (vel) {
-#if MAKKURO37
-        if ((smk_pad_pick >> pad) & 1u) {
-            smk_pick_hits |= (uint16_t)(1u << pad);
-            return;
+#if SMK_PAD_EVENTS
+    {
+        uint8_t w = smk_padq_w;
+        if ((uint8_t)(w + 1u) % SMK_PADQ != smk_padq_r) {
+            smk_padq[w] = (uint16_t)(pad << 8 | vel);
+            smk_padq_w = (uint8_t)((w + 1u) % SMK_PADQ);
         }
+        return;
+    }
 #endif
+    if (vel) {
         if (n0 < 0)
             return;                                   /* (a gap of the piano layout) */
         smk_pad_note[pad] = (uint8_t)(n0 + 1);
@@ -651,13 +651,15 @@ static uint32_t fm1_input_note_edges(void)
     return p;
 }
 
-#if MAKKURO37
-static uint32_t smk_pick_take(void)             /* the pads hit for the picker since the last call */
+#if SMK_PAD_EVENTS
+static int32_t smk_pad_take(void)               /* the next pad event (pad << 8 | velocity), -1 if none */
 {
-    uint32_t k = fm1__lock(), h = smk_pick_hits;
-    smk_pick_hits = 0;
-    fm1__unlock(k);
-    return h;
+    int32_t v = -1;
+    if (smk_padq_r != smk_padq_w) {
+        v = smk_padq[smk_padq_r];
+        smk_padq_r = (uint8_t)((smk_padq_r + 1u) % SMK_PADQ);
+    }
+    return v;
 }
 #endif
 

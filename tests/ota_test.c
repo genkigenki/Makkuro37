@@ -13,7 +13,7 @@
 #define FELUCCA_OTA_DRYRUN 0
 static int recovery_active;
 #if BOARD_SMK37                          /* -DBOARD_SMK37=1: the SMK-37 Pro build of ota.c */
-#define FELUCCA_ID "SMK-37 Pro_900"
+#define FELUCCA_ID "SMK-37 Pro_700"
 #define T_RECOVERY "SMK-37 Pro_000"
 #define T_AREA 0xBB000u
 #define T_PARM_ID "ota-SMK-37 Pro_016"

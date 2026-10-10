@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
-"""Build Felucca: the app, the update loader and an installable .fwsc package.
+# Makkuro37: Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com>
+"""Build Makkuro37: the app, the update loader and an installable .fwsc package.
 
-  tools/build.py [--release X.Y[-suffix]] [--board fm1|smk37]
+  tools/build.py [--release X.Y]
 
-Outputs in build/: felucca.bin (app), loader/ota.bin (update loader),
-felucca.fwsc (package). See BUILDING.md for the toolchain and the SDK.
+Outputs in build/: makkuro37.bin (app), loader/ota.bin (update loader), makkuro37.fwsc (package).
 
-BOARD=smk37 (or --board smk37) builds for the M-Vave SMK-37 Pro: -DBOARD_SMK37=1 for the app and the
-loader, identity SMK-37 Pro_900 (release SMK-37 Pro_9XY), the SMK flash layout (fm1pkg_make.py), and
-the package build/sloop-smk37.fwsc (sloop-smk37-X.Y.fwsc for a release). The default stays the FM-1.
+M-Vave SMK-37 Pro only: -DBOARD_SMK37=1, identity SMK-37 Pro_700 (release SMK-37 Pro_7XY), the SMK flash
+layout and app slot (fm1pkg_make.py).
 
 The JieLi toolchain is Linux x86-64 only. JIELI_TOOLCHAIN points at it; on
 macOS (or with JIELI_DOCKER=1) each tool runs in a linux/amd64 container.
@@ -20,7 +19,6 @@ import hashlib
 import os
 import platform
 import re
-import shutil
 import struct
 import subprocess
 import sys
@@ -51,11 +49,11 @@ SDK_SHA256 = {
     "cfg/eq_cfg_hw.bin": "41167491bffed4651750719c973d2758adeb9021a5670d02d6a53c85ed80ea7d",
 }
 
-PRODUCT = "FM-1_900"                # package identity; release builds are FM-1_9XY
-BOARD = "fm1"                       # fm1 (default) or smk37: BOARD env or --board
-BOARD_PREFIX = {"fm1": "FM-1_9", "smk37": "SMK-37 Pro_9"}   # identity of a release build: prefix + X + Y
-BOARD_DEFS = {"fm1": [], "smk37": ["-DBOARD_SMK37=1"]}       # the FM-1 build gets no new flag (byte-identical)
-VERSION = None                      # FELUCCA_VERSION for release builds (default: firmware/src/ui.c)
+PRODUCT = "SMK-37 Pro_700"          # package identity; release builds are SMK-37 Pro_7XY
+BOARD = "smk37"
+BOARD_PREFIX = {"smk37": "SMK-37 Pro_7"}
+BOARD_DEFS = {"smk37": ["-DBOARD_SMK37=1"]}
+VERSION = None                      # MK_VERSION for release builds (default: firmware/src/makkuro.c)
 
 
 def toolchain():
@@ -100,12 +98,7 @@ def generate():
     GEN.mkdir(parents=True, exist_ok=True)
     tools = SRC / "tools"
     cmds = [[tools / "gen_font.py", GEN / "felucca_font.h"],
-            [tools / "gen_icons.py", GEN / "felucca_icons.h"],
-            [tools / "gen_tables.py", GEN / "felucca_tables.h"],
-            [tools / "gen_samples.py", GEN / "felucca_samples.h"],
-            [tools / "gen_drumkits.py", GEN / "felucca_drumkits.h"],
-            [tools / "gen_fm6_patches.py", GEN / "felucca_fm6.h"],
-            [tools / "gen_logo.py", GEN / "sloop_logo.h"]]
+            [tools / "gen_tables.py", GEN / "mk_tables.h"]]
     procs = [subprocess.Popen([sys.executable, *map(str, c)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                               text=True) for c in cmds]
     failed = []
@@ -181,24 +174,14 @@ def build_loader():
 
 def build_app():
     flags = [*CFLAGS, *BOARD_DEFS[BOARD], "-Ifirmware/hal", "-Ifirmware/src", "-Ibuild/gen"]
-    for flag in ("FELUCCA_FLASH", "FELUCCA_OTA", "FELUCCA_OTA_DRYRUN", "FELUCCA_CDC", "FELUCCA_UART",
-                 "FELUCCA_ICONS", "FELUCCA_SLICE", "FELUCCA_CDC_ON", "MAKKURO37", "FELUCCA_DATA_UNTAGGED_OK"):
-        v = os.environ.get(flag)    # unset: the default in firmware/src/felucca.c
-        if v in ("0", "1"):
-            flags.append(f"-D{flag}={v}")
     flags.append(f'-DFELUCCA_ID="{PRODUCT}"')
-    fam = os.environ.get("FELUCCA_DATA_FAMILY")   # SMK store owner (storage.c): a ported firmware's own family
-    if fam:
-        if not re.fullmatch(r"[A-Z0-9]{1,7}", fam):
-            raise SystemExit("FELUCCA_DATA_FAMILY: 1..7 of A-Z 0-9")
-        flags.append(f'-DFELUCCA_DATA_FAMILY="{fam}"')
     if VERSION:
-        flags.append(f'-DFELUCCA_VERSION="{VERSION}"')
+        flags.append(f'-DMK_VERSION="{VERSION}"')
     tc_all(("cc", "-c", FW / "crt0.S", "-o", OUT / "crt0.o"),
            ("cc", "-c", FW / "hal" / "fm1_vec.S", "-o", OUT / "fm1_vec.o"),
            ("cc", "-c", FW / "hal" / "fm1_isr.S", "-o", OUT / "fm1_isr.o"),
-           ("cc", *flags, "-c", FW / "src" / "felucca.c", "-o", OUT / "felucca.o"))
-    elf = OUT / "felucca.elf"
+           ("cc", *flags, "-c", FW / "src" / "makkuro.c", "-o", OUT / "makkuro37.o"))
+    elf = OUT / "makkuro37.elf"
     ld = FW / "app.ld"
     if APP_SLOT != 0x8DFBC:          # another board's app slot (SMK-37 Pro): the same script, its XIP length
         txt = ld.read_text()
@@ -207,7 +190,7 @@ def build_app():
         ld = OUT / "app.ld"
         ld.write_text(txt.replace("LENGTH = 0x8DFBC", f"LENGTH = {APP_SLOT:#X}".replace("0X", "0x")))
     tc("pi32v2/bin/ld", "-T", ld, OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o",
-       OUT / "felucca.o", "-o", elf)
+       OUT / "makkuro37.o", "-o", elf)
     for sect in ("text.bin", "data.bin", "ramtext.bin"):
         (OUT / sect).unlink(missing_ok=True)
     *_, syms, dis, rt = tc_all(("common/bin/objcopy", "-O", "binary", "-j", ".text", elf, OUT / "text.bin"),
@@ -216,7 +199,7 @@ def build_app():
                                ("common/bin/objdump", "-t", elf),
                                ("common/bin/objdump", "-d", elf),
                                ("common/bin/objdump", "-d", "-j", ".ram_text", elf))
-    (OUT / "felucca.dis").write_text(dis)
+    (OUT / "makkuro37.dis").write_text(dis)
 
     def symv(name):
         return int(re.search(r"^([0-9a-f]+) .*\s" + name + r"$", syms, re.M).group(1), 16)
@@ -233,7 +216,7 @@ def build_app():
             img += b"\xff" * (load - APP_XIP - len(img))
             img += blob
     img += b"\xff" * (-len(img) % 4)
-    (OUT / "felucca.bin").write_bytes(img)
+    (OUT / "makkuro37.bin").write_bytes(img)
     return bytes(img), syms, dis, rt
 
 
@@ -320,17 +303,12 @@ def mmio_check():
 def main():
     global PRODUCT, VERSION, BOARD, APP_SLOT
     ap = argparse.ArgumentParser()
-    ap.add_argument("--release", metavar="X.Y", help="release build: identity FM-1_9XY, version string X.Y")
-    ap.add_argument("--board", choices=sorted(BOARD_PREFIX), default=None,
-                    help="target board: fm1 (default) or smk37 (default: $BOARD, else fm1)")
+    ap.add_argument("--release", metavar="X.Y", help="release build: identity SMK-37 Pro_7XY, version string X.Y")
     ap.add_argument("--sdk", type=Path, help="JieLi AC79 SDK checkout (default: $AC79_SDK)")
     a = ap.parse_args()
-    BOARD = (a.board or os.environ.get("BOARD") or "fm1").lower().replace("-", "")
-    if BOARD not in BOARD_PREFIX:
-        raise SystemExit(f"BOARD={BOARD}: use fm1 or smk37")
     fm1pkg_make.set_board(BOARD)
     APP_SLOT = fm1pkg_make.APP_SLOT
-    stem = "felucca" if BOARD == "fm1" else "sloop-" + BOARD
+    stem = "makkuro37"
     PRODUCT = fm1pkg_make.BOARDS[BOARD][2]
     name = f"{stem}.fwsc"
     if a.release:                   # one digit each: the identity has room for two
@@ -338,7 +316,7 @@ def main():
         if not m:
             raise SystemExit(f"--release {a.release}: use X.Y or X.Y-suffix, one digit each")
         PRODUCT = BOARD_PREFIX[BOARD] + m[1] + m[2]
-        VERSION = a.release.upper() if "BETA" in a.release.upper() else a.release.upper() + " BETA"
+        VERSION = a.release.upper()
         name = f"{stem}-{a.release}.fwsc"
     fm1pkg_make.SDK = a.sdk
     for rel, sha in SDK_SHA256.items():          # fail early without the SDK
@@ -363,10 +341,7 @@ def main():
         raise SystemExit("build: checks failed")
     pkg = fm1pkg_make.ufw(fm1pkg_make.flash_image(img, fm1pkg_make.KEY), ota, PRODUCT)
     (OUT / name).write_bytes(pkg)
-    att = SRC / "assets" / "samples-cc0" / "ATTRIBUTION.txt"
-    if att.exists():
-        shutil.copy(att, OUT / "ATTRIBUTION.txt")
-    print(f"app      {OUT / 'felucca.bin'}  {len(img)} B")
+    print(f"app      {OUT / 'makkuro37.bin'}  {len(img)} B")
     print(f"loader   {LDR / 'ota.bin'}  {len(ota)} B")
     print(f"package  {OUT / name}  {len(pkg)} B, identity {PRODUCT}, board {BOARD}")
     return 0

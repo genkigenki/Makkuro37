@@ -64,23 +64,10 @@ static void lcd_window(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1)
 }
 
 static uint16_t lcd_fillbuf[240];
-#if MAKKURO37
-/* the brightness of what is drawn, 0..256 (makkuro_splash.c: SLOOP's first screen fades in) */
-static uint32_t lcd_dim = 256u;
-static uint16_t lcd_dim565(uint32_t c)
-{
-    return (uint16_t)((((c >> 11) * lcd_dim >> 8) << 11) | ((((c >> 5) & 63u) * lcd_dim >> 8) << 5) |
-                      ((c & 31u) * lcd_dim >> 8));
-}
-#endif
 
 static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 {
     uint32_t i, n, k, sw;
-#if MAKKURO37
-    if (lcd_dim < 256u)
-        c = lcd_dim565(c);
-#endif
     sw = (uint16_t)((c >> 8) | (c << 8));
     if (!w || !h || x >= 240u || y >= 240u)
         return;
@@ -104,17 +91,6 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
 {
     if (!w || !h)
         return;
-#if MAKKURO37
-    if (lcd_dim < 256u) {                     /* (in place: the caller draws its canvas anew each time) */
-        uint16_t *q = (uint16_t *)(uintptr_t)px;
-        uint32_t i;
-        lcd_sync();
-        for (i = 0; i < w * h; i++) {
-            uint32_t v = lcd_dim565((uint32_t)(q[i] >> 8 | q[i] << 8) & 0xFFFFu);
-            q[i] = (uint16_t)(v >> 8 | v << 8);
-        }
-    }
-#endif
     lcd_window(x, y, x + w - 1u, y + h - 1u);
     lcd_data(px, w * h * 2u);
 }

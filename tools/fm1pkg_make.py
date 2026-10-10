@@ -44,7 +44,7 @@ REGIONS = {
 }
 # per board: (FLASH_SIZE = PRCT = the end of what the update loader writes, APP_SLOT, default product)
 BOARDS = {"fm1": (0x93000, 0x8DFBC, "FM-1_900"),
-          "smk37": (0x9D000, 0x97400, "SMK-37 Pro_900")}   # SMK: the stock app is 0x974B8; build.py sets app.ld XIP
+          "smk37": (0x9D000, 0x97400, "SMK-37 Pro_700")}   # SMK: the stock app is 0x974B8; build.py sets app.ld XIP
 
 
 def set_board(board):
@@ -223,7 +223,7 @@ def main():
     ap.add_argument("ota", type=Path)
     ap.add_argument("out", type=Path)
     ap.add_argument("--board", choices=sorted(BOARDS), default="fm1")
-    ap.add_argument("--product", help="package identity (default: FM-1_900; smk37: SMK-37 Pro_900)")
+    ap.add_argument("--product", help="package identity (default: FM-1_900; smk37: SMK-37 Pro_700, Makkuro37)")
     ap.add_argument("--key", type=lambda s: int(s, 0), default=KEY)
     ap.add_argument("--sdk", type=Path, help="JieLi AC79 SDK checkout (default: $AC79_SDK)")
     a = ap.parse_args()

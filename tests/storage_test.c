@@ -43,65 +43,63 @@ int main(void)
     memset(nor, 0xFF, sizeof nor);
     memset(a, 'A', sizeof a);
     memset(b, 'B', sizeof b);
-    bad += check("empty flash loads nothing", st_load(OBJ_PROJECT0, got, sizeof got) < 0);
-    bad += check("save A", st_save(OBJ_PROJECT0, a, sizeof a) == 0);
-    n = st_load(OBJ_PROJECT0, got, sizeof got);
+    bad += check("empty flash loads nothing", st_load(OBJ_SCENE0, got, sizeof got) < 0);
+    bad += check("save A", st_save(OBJ_SCENE0, a, sizeof a) == 0);
+    n = st_load(OBJ_SCENE0, got, sizeof got);
     bad += check("load returns A", n == (int)sizeof a && !memcmp(got, a, sizeof a));
-    bad += check("save B", st_save(OBJ_PROJECT0, b, sizeof b) == 0);
-    n = st_load(OBJ_PROJECT0, got, sizeof got);
+    bad += check("save B", st_save(OBJ_SCENE0, b, sizeof b) == 0);
+    n = st_load(OBJ_SCENE0, got, sizeof got);
     bad += check("load returns B (newer seq)", n == (int)sizeof b && !memcmp(got, b, sizeof b));
     fail_after = 1;                                  /* payload page 1 written, the rest torn */
-    st_save(OBJ_PROJECT0, a, sizeof a);
+    st_save(OBJ_SCENE0, a, sizeof a);
     fail_after = -1;
-    n = st_load(OBJ_PROJECT0, got, sizeof got);
+    n = st_load(OBJ_SCENE0, got, sizeof got);
     bad += check("torn save keeps B", n == (int)sizeof b && !memcmp(got, b, sizeof b));
     fail_after = 3;                                  /* all payload pages, header torn */
-    st_save(OBJ_PROJECT0, a, sizeof a);
+    st_save(OBJ_SCENE0, a, sizeof a);
     fail_after = -1;
-    n = st_load(OBJ_PROJECT0, got, sizeof got);
+    n = st_load(OBJ_SCENE0, got, sizeof got);
     bad += check("header not written keeps B", n == (int)sizeof b && !memcmp(got, b, sizeof b));
-    bad += check("save A again", st_save(OBJ_PROJECT0, a, sizeof a) == 0);
-    n = st_load(OBJ_PROJECT0, got, sizeof got);
+    bad += check("save A again", st_save(OBJ_SCENE0, a, sizeof a) == 0);
+    n = st_load(OBJ_SCENE0, got, sizeof got);
     bad += check("load returns A", n == (int)sizeof a && !memcmp(got, a, sizeof a));
-    nor[st_sector(OBJ_PROJECT0, 0) + ST_PAYLOAD_OFF + 10] ^= 0x01;   /* bit rot in one copy */
-    nor[st_sector(OBJ_PROJECT0, 1) + ST_PAYLOAD_OFF + 10] ^= 0x01;
-    n = st_load(OBJ_PROJECT0, got, sizeof got);
+    nor[st_sector(OBJ_SCENE0, 0) + ST_PAYLOAD_OFF + 10] ^= 0x01;   /* bit rot in one copy */
+    nor[st_sector(OBJ_SCENE0, 1) + ST_PAYLOAD_OFF + 10] ^= 0x01;
+    n = st_load(OBJ_SCENE0, got, sizeof got);
     bad += check("both copies corrupt -> nothing", n < 0);
-    bad += check("other objects untouched", st_load(OBJ_PROJECT0 + 1, got, sizeof got) < 0);
+    bad += check("other objects untouched", st_load(OBJ_SCENE0 + 1, got, sizeof got) < 0);
     bad += check("settings save/load",
                  st_save(OBJ_SETTINGS, "hello", 5) == 0 && st_load(OBJ_SETTINGS, got, 5) == 5 && !memcmp(got, "hello", 5));
     bad += check("CRC-32 is zlib's (check value 0xCBF43926)", st_crc32("123456789", 9) == 0xCBF43926u);
     memset(nor, 0xFF, sizeof nor);
-    st_save(OBJ_PROJECT0 + 2, a, sizeof a);
-    st_save(OBJ_PROJECT0 + 2, b, sizeof b);              /* B is newer, in the other copy */
+    st_save(OBJ_SCENE0 + 2, a, sizeof a);
+    st_save(OBJ_SCENE0 + 2, b, sizeof b);              /* B is newer, in the other copy */
     {
         st_hdr_t h;
-        int cur = st_current(OBJ_PROJECT0 + 2, &h);
-        nor[st_sector(OBJ_PROJECT0 + 2, (uint32_t)cur) + ST_PAYLOAD_OFF + 300] ^= 0x10;   /* rot in the newer copy */
+        int cur = st_current(OBJ_SCENE0 + 2, &h);
+        nor[st_sector(OBJ_SCENE0 + 2, (uint32_t)cur) + ST_PAYLOAD_OFF + 300] ^= 0x10;   /* rot in the newer copy */
     }
-    n = st_load(OBJ_PROJECT0 + 2, got, sizeof got);
+    n = st_load(OBJ_SCENE0 + 2, got, sizeof got);
     bad += check("newer copy rotten -> the older one loads", n == (int)sizeof a && !memcmp(got, a, sizeof a));
-    bad += check("save over the rotten copy", st_save(OBJ_PROJECT0 + 2, b, sizeof b) == 0);
-    n = st_load(OBJ_PROJECT0 + 2, got, sizeof got);
+    bad += check("save over the rotten copy", st_save(OBJ_SCENE0 + 2, b, sizeof b) == 0);
+    n = st_load(OBJ_SCENE0 + 2, got, sizeof got);
     bad += check("... loads the new data", n == (int)sizeof b && !memcmp(got, b, sizeof b));
-    nor[st_sector(OBJ_PROJECT0 + 2, 0) + 8] ^= 0x01;    /* both headers broken */
-    nor[st_sector(OBJ_PROJECT0 + 2, 1) + 8] ^= 0x01;
-    bad += check("both headers broken -> nothing", st_load(OBJ_PROJECT0 + 2, got, sizeof got) < 0);
+    nor[st_sector(OBJ_SCENE0 + 2, 0) + 8] ^= 0x01;    /* both headers broken */
+    nor[st_sector(OBJ_SCENE0 + 2, 1) + 8] ^= 0x01;
+    bad += check("both headers broken -> nothing", st_load(OBJ_SCENE0 + 2, got, sizeof got) < 0);
     {   /* every copy of every object in the Felucca regions, off the sample slots (0xA0000..0xDBFFF) and
          * the update staging (0xE0000..0xE4FFF; the FM6 bank's two sectors follow it), and no two sectors shared */
         uint32_t o, c, o2, c2, inside = 1, apart = 1;
         for (o = 0; o < OBJ_COUNT; o++)
             for (c = 0; c < 2u; c++) {
                 uint32_t a = st_sector(o, c);
-                int data = a >= 0x97000u && a + 4096u <= 0xA0000u, ups = a >= 0xDC000u && a + 4096u <= 0xE0000u;
-                int glob = a >= 0xFC000u && a + 4096u <= 0xFF000u, fm6 = a >= 0xE5000u && a + 4096u <= 0xE7000u;
-                inside &= (data || ups || glob || fm6) && !(a & 0xFFFu);
+                inside &= a >= 0x9D000u && a + 4096u <= 0xAF000u && !(a & 0xFFFu);   /* SMK FL_DATA, below the owner tag */
                 for (o2 = 0; o2 < OBJ_COUNT; o2++)
                     for (c2 = 0; c2 < 2u; c2++)
                         if ((o2 != o || c2 != c) && st_sector(o2, c2) == a)
                             apart = 0;
             }
-        bad += check("data stays in the Felucca regions (autosave too)", inside);
+        bad += check("data stays in the SMK store 0x9D000..0xAEFFF", inside);
         bad += check("every object copy has its own sector", apart);
     }
     {   /* SLOOP 2.5: the settings in two parts (persist_t, then the SYN kits): one record, A/B as any other */

@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
-/* Serial console on the CDC-ACM function (FELUCCA_CDC=1): read-only
- * diagnostics. Runs in the main loop (cdc_task); usb_poll moves the bytes.
- * The baud rate is ignored. Nothing here writes memory or flash; `uboot`
- * does what the SysEx soft key does. */
+ * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
+ * Makkuro37: Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
+/* Serial console on the CDC-ACM function: diagnostics and test hooks (gates, parameters, scenes).
+ * Runs in the main loop (cdc_task); usb_poll moves the bytes. The baud rate is ignored. Flash is
+ * written only by `scene save`; `uboot` does what the SysEx soft key does. */
 #define CON_LINE 64u
 
 static struct {
@@ -172,51 +172,143 @@ static void con_flr(const char *p)                  /* flash read over SPI (no X
 }
 #endif
 
+static int32_t con_db10(int32_t peak)                   /* dBFS x 10 of a Q15 peak (rough) */
+{
+    int32_t d = 0;
+    if (peak <= 0)
+        return -999;
+    while (peak < 16384)
+        peak <<= 1, d -= 60;
+    return d - (32767 - peak) * 60 / 16384;
+}
+
 static void con_status(void)
 {
-    const engine_t *e = ENGINES[TSEL->eng_req % NENGINES];
-    con_puts("felucca ");
-    con_puts(FELUCCA_VERSION);
-    con_puts("\r\n");
+    uint32_t v, act = 0;
+    for (v = 0; v < NV; v++)
+        act += vs[v].stage != 0u;
+    con_puts("makkuro37 " MK_VERSION "\r\n");
     con_kv("uptime_ms", (int32_t)fm1_ms);
-    con_kv("cpu_pct", (int32_t)(song.cpu_q8 * 100u / 256u));
-    con_kv("audio_max_us", (int32_t)felucca_dbg.max_us);
-    con_kv("voices_shed", (int32_t)shed_count);
-    con_kv("voices_given_up", (int32_t)voice_kills);
-    con_kv("track", (int32_t)song.sel + 1);
-    con_kv("batt_raw", song.batt_raw);
-    con_puts("engine ");
-    con_puts(e->name);
-    con_puts("\r\n");
-    con_puts("preset ");
-    con_puts(TSEL->preset < e->npresets ? e->presets[TSEL->preset].name : "-");
-    con_puts("\r\n");
-    con_kv("bpm", song.g[G_BPM]);
-    con_kv("playing", song.playing);
-    con_kv("boots", (int32_t)felucca_dbg.boots);
-    con_kv("usb_resets", (int32_t)usb.resets);
-    con_kv("usb_sof", (int32_t)usb.sof_seen);
-    con_kv("usb_suspends", (int32_t)usb.suspends);
-    con_kv("usb_retries", (int32_t)usb.retries);
-    con_kv("usb_frame", (int32_t)usb.frame);
-    con_kv("usb_frame_stalls", (int32_t)usb.frame_stalls);
-    con_kv("usb_max_gap_polls", (int32_t)usb.max_gap);
-    con_kv("midi_rx_pkts", (int32_t)usb.rx_pkts);
-    con_kv("midi_tx_pkts", (int32_t)usb.tx_pkts);
-#if FELUCCA_FLASH
+    con_kv("cpu_pct", (int32_t)(cpu_q8 * 100u / 256u));
+    con_kv("cpu_peak_pct", (int32_t)(cpu_peak_q8 * 100u / 256u));
+    con_kv("audio_max_us", (int32_t)mk_dbg.max_us);
+    con_kv("audio_late", (int32_t)mk_dbg.late);
+    con_kv("voices_on", (int32_t)act);
+    con_kv("peak_db10", con_db10(syn.peak));
+    con_kv("limiter", (int32_t)syn.overs);
+    con_kv("scene", settings.scene);
     con_kv("flash", flash_ok);
-#endif
+    con_kv("boots", (int32_t)mk_dbg.boots);
+    con_kv("usb_resets", (int32_t)usb.resets);
+    con_kv("midi_rx_pkts", (int32_t)usb.rx_pkts);
+    con_kv("uac_underruns", (int32_t)uac.underruns);
+}
+
+static void con_cpu(void)                               /* the load since the last `cpu` */
+{
+    con_kv("cpu_pct", (int32_t)(cpu_q8 * 100u / 256u));
+    con_kv("cpu_peak_pct", (int32_t)(cpu_peak_q8 * 100u / 256u));
+    con_kv("audio_max_us", (int32_t)mk_dbg.max_us);
+    con_kv("audio_late", (int32_t)mk_dbg.late);
+    con_kv("peak_db10", con_db10(syn.peak));
+    con_kv("limiter", (int32_t)syn.overs);
+    cpu_peak_q8 = 0;
+    mk_dbg.max_us = 0;
+    syn.peak = 0;
+    syn.overs = 0;
+}
+
+static void con_voices(void)
+{
+    uint32_t v;
+    for (v = 0; v < NV; v++) {
+        con_puts("v");
+        con_dec((int32_t)v + 1);
+        con_puts(VTYPE[v] == VT_CLASSIC ? " classic" : VTYPE[v] == VT_NOISE ? " noise  " : " vco    ");
+        con_puts(" gate ");
+        con_dec(gate_in[v]);
+        con_puts(" hold ");
+        con_dec(ui.latched[v]);
+        con_puts(" stage ");
+        con_dec(vs[v].stage);
+        con_puts(" level ");
+        con_dec(vs[v].level);
+        con_puts(" inc0 ");
+        con_dec((int32_t)vs[v].inc[0]);
+        con_puts("\r\n");
+    }
+}
+
+/* gate N on|off (N 1..8, or `all`): as a tap on the pad */
+static void con_gate(const char *p)
+{
+    int ok;
+    uint32_t n, v, lo, hi, on;
+    if (con_word(&p, "all"))
+        lo = 0, hi = NV;
+    else {
+        n = con_num(&p, &ok);
+        if (!ok || n < 1u || n > NV) {
+            con_puts("usage: gate 1..8|all on|off\r\n");
+            return;
+        }
+        lo = n - 1u, hi = n;
+    }
+    on = (uint32_t)con_word(&p, "on");
+    for (v = lo; v < hi; v++) {
+        ui.latched[v] = (uint8_t)on;
+        ui.pad_gate[v] = (uint8_t)on;
+    }
+    con_puts("ok\r\n");
+}
+
+/* set vN K VALUE | set g K VALUE (parameter index, clamped) */
+static void con_set(const char *p)
+{
+    int ok1 = 0, ok2 = 0, glob = con_word(&p, "g");
+    uint32_t v = 0, k;
+    int32_t x;
+    if (!glob) {
+        while (*p == ' ')
+            p++;
+        if (*p != 'v') {
+            con_puts("usage: set vN K VALUE | set g K VALUE\r\n");
+            return;
+        }
+        p++;
+        v = con_num(&p, &ok1) - 1u;
+        if (!ok1 || v >= NV) {
+            con_puts("voice 1..8\r\n");
+            return;
+        }
+    }
+    k = con_num(&p, &ok1);
+    while (*p == ' ')
+        p++;
+    if (*p == '-') {
+        p++;
+        x = -(int32_t)con_num(&p, &ok2);
+    } else
+        x = (int32_t)con_num(&p, &ok2);
+    if (!ok1 || !ok2 || k >= (glob ? (uint32_t)G_COUNT : (uint32_t)VP_N)) {
+        con_puts("bad index or value\r\n");
+        return;
+    }
+    if (glob)
+        pt.g[k] = (int16_t)clamp(x, GDESC[k].min, GDESC[k].max);
+    else
+        pt.v[v][k] = VDESC[VTYPE[v]][k].label ? vp_clamp(v, k, x) : 0;
+    ui.dirty = 1;
+    con_kv("=", glob ? pt.g[k] : pt.v[v][k]);
 }
 
 static void con_dbg(void)
 {
-    const uint32_t *w = (const uint32_t *)&felucca_dbg;
-    static const char *const NAMES[] = {"magic", "halves", "max_us", "nested", "in_audio", "late",
-                                        "timer_irqs", "ui_frames", "last_us", "cpu_q8", "boots",
-                                        "stage", "page", "home", "prev_stage", "prev_page",
-                                        "prev_home", "prev_rst", "prev_frames"};
+    const uint32_t *w = (const uint32_t *)&mk_dbg;
+    static const char *const NAMES[] = {"magic", "halves", "max_us", "nested", "in_audio", "late", "timer_irqs",
+                                        "ui_frames", "last_us", "cpu_q8", "boots", "stage", "prev_stage", "prev_rst"};
     uint32_t i;
-    for (i = 0; i < sizeof NAMES / sizeof NAMES[0] && i < sizeof felucca_dbg / 4u; i++)
+    for (i = 0; i < sizeof NAMES / sizeof NAMES[0] && i < sizeof mk_dbg / 4u; i++)
         con_kx(NAMES[i], w[i]);
 }
 
@@ -239,16 +331,39 @@ static void con_crash(void)
 
 static void con_params(void)
 {
-    uint32_t i;
-    for (i = 0; i < P_COUNT; i++) {
-        con_dec((int32_t)i);
-        con_putc('=');
-        con_dec(TSEL->p[i]);
-        con_puts(i % 8u == 7u || i + 1u == P_COUNT ? "\r\n" : " ");
+    uint32_t v, k;
+    for (v = 0; v < NV; v++) {
+        con_puts("v");
+        con_dec((int32_t)v + 1);
+        for (k = 0; k < VP_N; k++) {
+            con_putc(' ');
+            con_dec(pt.v[v][k]);
+        }
+        con_puts("\r\n");
     }
+    con_puts("g");
+    for (k = 0; k < G_COUNT; k++) {
+        con_putc(' ');
+        con_dec(pt.g[k]);
+    }
+    con_puts("\r\n");
 }
 
-#if BOARD_SMK37
+static void con_scene(const char *p)
+{
+    int ok, save = con_word(&p, "save"), load = !save && con_word(&p, "load"), rc;
+    uint32_t n = con_num(&p, &ok);
+    if ((!save && !load) || !ok || n < 1u || n > NSCENE) {
+        con_puts("usage: scene save|load 1..8\r\n");
+        return;
+    }
+    rc = save ? scene_save(n - 1u) : scene_load(n - 1u);
+    if (!rc && load)
+        settings.scene = (uint8_t)n;
+    ui.dirty = 1;
+    con_kv(save ? "saved" : "loaded", rc);
+}
+
 static void con_smk(void)                               /* the SMK-37 Pro inputs (smk_input.h) */
 {
     uint32_t i;
@@ -268,12 +383,13 @@ static void con_smk(void)                               /* the SMK-37 Pro inputs
     con_puts("\r\n");
     con_kv("wheel0", fm1_in.wheel[0]);
     con_kv("wheel1", fm1_in.wheel[1]);
-    con_kv("bend", perf_bend);
-    con_kv("modw", perf_modw);
+    con_kv("joy_x", modv[MS_JOYX]);
+    con_kv("joy_y", modv[MS_JOYY]);
     con_kv("pedal", fm1_in.pedal);
     con_kv("batt", fm1_in.batt);
     con_kx("buttons", fm1_in.buttons);
-    con_kx("notes", fm1_in.notes);
+    con_kx("keys_lo", (uint32_t)fm1_in.keys);
+    con_kx("keys_hi", (uint32_t)(fm1_in.keys >> 32));
     for (i = 0; i < FM1_NENC; i++) {
         con_puts("enc");
         con_dec((int32_t)i);
@@ -311,43 +427,35 @@ static void con_padtest(void)
     con_puts("top row from the left: red green blue white\r\n");
 }
 
-/* one button LED alone for 8 s, to map them (bled 0..18) */
-static void con_bled(const char *p)
-{
-    int ok;
-    uint32_t n = con_num(&p, &ok);
-    if (!ok || n >= SMK_NLED) {
-        con_puts("usage: bled 0..18\r\n");
-        return;
-    }
-    bled_id = (uint8_t)n;
-    bled_hold_until = fm1_ms + 8000u;
-    con_puts("on\r\n");
-}
-#endif
-
 static void con_exec(const char *p)
 {
     if (con_word(&p, "help") || con_word(&p, "?"))
-        con_puts("status  dbg  crash  params  memr ADDR [LEN]  flr OFF [LEN]  uboot yes\r\n");
+        con_puts("status  cpu  voices  in  leds  padtest  gate N|all on|off  set vN|g K V  params\r\n"
+                 "scene save|load N  dbg  crash  memr ADDR [LEN]  flr OFF [LEN]  uboot yes\r\n");
     else if (con_word(&p, "status"))
         con_status();
+    else if (con_word(&p, "cpu"))
+        con_cpu();
+    else if (con_word(&p, "voices"))
+        con_voices();
+    else if (con_word(&p, "gate"))
+        con_gate(p);
+    else if (con_word(&p, "set"))
+        con_set(p);
+    else if (con_word(&p, "scene"))
+        con_scene(p);
     else if (con_word(&p, "dbg"))
         con_dbg();
     else if (con_word(&p, "crash"))
         con_crash();
     else if (con_word(&p, "params"))
         con_params();
-#if BOARD_SMK37
-    else if (con_word(&p, "smk"))
+    else if (con_word(&p, "in"))
         con_smk();
     else if (con_word(&p, "padtest"))
         con_padtest();
     else if (con_word(&p, "leds"))
         con_leds();
-    else if (con_word(&p, "bled"))
-        con_bled(p);
-#endif
     else if (con_word(&p, "memr"))
         con_memr(p);
 #if FELUCCA_FLASH
@@ -368,9 +476,7 @@ static void con_exec(const char *p)
 static void cdc_task(void)                              /* main loop */
 {
     if (cdc.dtr && !con.dtr_seen) {
-        con_puts("\r\nFelucca ");
-        con_puts(FELUCCA_VERSION);
-        con_puts(" console - 'help'\r\n> ");
+        con_puts("\r\nMakkuro37 " MK_VERSION " console - 'help'\r\n> ");
     }
     con.dtr_seen = cdc.dtr;
     while (ci_r != ci_w) {

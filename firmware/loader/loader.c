@@ -14,7 +14,7 @@
 #define FELUCCA_USB_PID 0x0002
 #include "fm1_cc.h"                             /* BOARD_SMK37 */
 #if BOARD_SMK37
-#define FELUCCA_ID "ota-SMK-37 Pro_900"
+#define FELUCCA_ID "ota-SMK-37 Pro_700"     /* Makkuro37 */
 #else
 #define FELUCCA_ID "ota-FM-1_900"
 #endif

@@ -69,8 +69,9 @@ int main(void)
                             distinct = 0;
         check("storage.c: every object (A/B) in FL_DATA, no two share a sector", in_store && distinct);
     }
-    check("storage.c: settings 0xAD000/0xAE000, projects from 0x9D000",
-          st_sector(OBJ_SETTINGS, 0) == 0xAD000u && st_sector(OBJ_SETTINGS, 1) == 0xAE000u && st_sector(OBJ_PROJECT0, 0) == 0x9D000u);
+    check("storage.c: settings 0x9D000/0x9E000, scenes from 0x9F000, owner tag at 0xAF000",
+          st_sector(OBJ_SETTINGS, 0) == 0x9D000u && st_sector(OBJ_SETTINGS, 1) == 0x9E000u &&
+          st_sector(OBJ_SCENE0, 0) == 0x9F000u && st_sector(OBJ_SCENE0 + 7, 1) == 0xAE000u && ST_OWNER_OFF == 0xAF000u);
     check("FL_PLAIN_LO = the VM start 0x9D000", FL_PLAIN_LO == 0x9D000u);
     check("FL_JEDEC_OK: the SMK part 0xEB6014 and 0x856014 only", FL_JEDEC_OK(0xEB6014u) && FL_JEDEC_OK(0x856014u) &&
           !FL_JEDEC_OK(0u) && !FL_JEDEC_OK(0xFFFFFFu) && !FL_JEDEC_OK(0xEB6015u));
