@@ -1,28 +1,32 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
-/* Settings and the 8 scenes in the SMK data area (storage.c, owner SMK37DATAMAKKURO). A stored scene
- * carries its parameter counts, so a later firmware with more parameters still reads it. */
+/* Settings and the 16 user presets (PRESETS, theme MINE) in the SMK data area (storage.c, owner SMK37DATAMAKKURO),
+ * two presets per stored object. A record carries its parameter counts, so a later firmware with more parameters
+ * still reads it; a scene of earlier versions (one per object) reads as the first of the pair. */
 #define SET_MAGIC 0x4D4B5331u              /* "MKS1" */
-#define SCN_MAGIC 0x4D4B4331u              /* "MKC1" */
-#define NSCENE 8u
+#define USR_MAGIC 0x4D4B5532u              /* "MKU2": two presets */
+#define OLD_MAGIC 0x4D4B4331u              /* "MKC1": one scene (earlier versions) */
+#define NUSER 16u
 typedef struct {
     uint32_t magic;
     uint8_t bright;                        /* pad LEDs 1..8 */
     uint8_t console;                       /* USB serial console (CDC) */
-    uint8_t boot_scene;                    /* 0 = the power-on sound, 1..8 = that scene */
-    uint8_t scene;                         /* the scene loaded last (1..8, 0 = none) */
+    uint8_t rsv0;
+    uint8_t user;                          /* the user preset loaded last (1..16, 0 = none) */
     uint8_t speaker;                       /* output for the little speaker (analog.c) */
     uint8_t rsv[7];
 } settings_t;
 static settings_t settings = {SET_MAGIC, 4, 1, 0, 0, 0, {0}};
-static uint8_t scene_used;                 /* bit n: scene n + 1 is stored */
+static uint16_t user_used;                 /* bit n: user preset n + 1 is stored */
 
 typedef struct {
-    uint32_t magic;
-    uint8_t nv, vpn, gn, rsv;
+    uint8_t nv, vpn, gn, used;
     patch_t p;
-} scene_rec_t;
-static scene_rec_t scn;                    /* (RAM: the driver programs from RAM) */
+} urec_t;
+static struct {
+    uint32_t magic;
+    urec_t r[2];
+} uobj;                                    /* (RAM: the driver programs from RAM) */
 
 static void settings_save(void)
 {
@@ -36,66 +40,72 @@ static void patch_sanitize(patch_t *p)
     uint32_t v, k;
     for (v = 0; v < NV; v++)
         for (k = 0; k < VP_N; k++)
-            if (VDESC[VTYPE[v]][k].label)
-                p->v[v][k] = vp_clamp(v, k, p->v[v][k]);
-            else
-                p->v[v][k] = 0;
+            p->v[v][k] = VDESC[VTYPE[v]][k].label ? vp_clamp(v, k, p->v[v][k]) : 0;
     for (k = 0; k < G_COUNT; k++)
         p->g[k] = (int16_t)clamp(p->g[k], GDESC[k].min, GDESC[k].max);
 }
 
-static int scene_save(uint32_t n)          /* 0..7; 0 = saved */
+static int uobj_read(uint32_t o)           /* object o into uobj; 0 = there */
 {
+    int len = st_load(OBJ_SCENE0 + o, &uobj, sizeof uobj);
+    if (len >= 8 && uobj.magic == OLD_MAGIC) {
+        uobj.r[0].used = 1;                /* (its rsv byte, 0: the one scene it holds) */
+        uobj.r[1].used = 0;
+        return 0;
+    }
+    return len >= 8 && uobj.magic == USR_MAGIC ? 0 : -1;
+}
+
+static int user_save(uint32_t n)           /* the sound into user preset n (0..15); 0 = saved */
+{
+    urec_t *r;
     int rc;
-    if (!flash_ok || n >= NSCENE)
+    if (!flash_ok || n >= NUSER)
         return -1;
-    scn.magic = SCN_MAGIC;
-    scn.nv = NV;
-    scn.vpn = VP_N;
-    scn.gn = G_COUNT;
-    scn.rsv = 0;
-    scn.p = pt;
-    rc = st_save(OBJ_SCENE0 + n, &scn, sizeof scn);
+    if (uobj_read(n / 2u))
+        memset(&uobj, 0, sizeof uobj);
+    uobj.magic = USR_MAGIC;
+    r = &uobj.r[n & 1u];
+    r->nv = NV, r->vpn = VP_N, r->gn = G_COUNT, r->used = 1;
+    r->p = pt;
+    rc = st_save(OBJ_SCENE0 + n / 2u, &uobj, sizeof uobj);
     if (!rc)
-        scene_used |= (uint8_t)(1u << n);
+        user_used |= (uint16_t)(1u << n);
     return rc;
 }
 
-static int scene_load_to(uint32_t n, patch_t *dst)   /* 0 = loaded */
+static int user_load_to(uint32_t n, patch_t *dst)   /* 0 = loaded */
 {
     static patch_t tmp;
+    const urec_t *r = &uobj.r[n & 1u];
     uint32_t v, k;
-    int len;
-    if (!flash_ok || n >= NSCENE)
-        return -1;
-    len = st_load(OBJ_SCENE0 + n, &scn, sizeof scn);
-    if (len < 8 || scn.magic != SCN_MAGIC || scn.nv != NV || scn.vpn > VP_N || scn.gn > G_COUNT)
+    if (!flash_ok || n >= NUSER || uobj_read(n / 2u) || !r->used || r->nv != NV || r->vpn > VP_N || r->gn > G_COUNT)
         return -2;
     patch_init(&tmp);                       /* parameters the record does not have keep their defaults */
-    for (v = 0; v < NV; v++)
-        for (k = 0; k < VP_N && k < scn.vpn; k++)
-            tmp.v[v][k] = scn.p.v[v][k];
-    for (k = 0; k < G_COUNT && k < scn.gn; k++)
-        tmp.g[k] = scn.p.g[k];
-    if (scn.vpn != VP_N) {                  /* an older layout: the voice rows sit closer together */
-        const int16_t *r = &scn.p.v[0][0];
+    if (r->vpn == VP_N) {
         for (v = 0; v < NV; v++)
-            for (k = 0; k < VP_N && k < scn.vpn; k++)
-                tmp.v[v][k] = r[v * scn.vpn + k];
-        r += NV * scn.vpn;
-        for (k = 0; k < G_COUNT && k < scn.gn; k++)
-            tmp.g[k] = r[k];
+            for (k = 0; k < VP_N; k++)
+                tmp.v[v][k] = r->p.v[v][k];
+        for (k = 0; k < G_COUNT && k < r->gn; k++)
+            tmp.g[k] = r->p.g[k];
+    } else {                                /* an older layout: the voice rows sit closer together */
+        const int16_t *q = &r->p.v[0][0];
+        for (v = 0; v < NV; v++)
+            for (k = 0; k < r->vpn; k++)
+                tmp.v[v][k] = q[v * r->vpn + k];
+        q += NV * r->vpn;
+        for (k = 0; k < r->gn; k++)
+            tmp.g[k] = q[k];
     }
     patch_sanitize(&tmp);
     *dst = tmp;
     return 0;
 }
-static int scene_load(uint32_t n) { return scene_load_to(n, &pt); }
 
 static void persist_boot(void)
 {
     settings_t s;
-    uint32_t n, f = irq_save();
+    uint32_t o, f = irq_save();
     flash_ok = FL_JEDEC_OK(FL_FAR(fl_jedec_ram)());
     irq_restore(f);
     if (!flash_ok)
@@ -105,12 +115,10 @@ static void persist_boot(void)
         settings = s;
         if (settings.bright < 1u || settings.bright > 8u)
             settings.bright = 4;
-        if (settings.boot_scene > NSCENE)
-            settings.boot_scene = 0;
+        if (settings.user > NUSER)
+            settings.user = 0;
     }
-    for (n = 0; n < NSCENE; n++) {
-        st_hdr_t h;
-        if (st_current(OBJ_SCENE0 + n, &h) >= 0)
-            scene_used |= (uint8_t)(1u << n);
-    }
+    for (o = 0; o < NUSER / 2u; o++)
+        if (!uobj_read(o))
+            user_used |= (uint16_t)((uobj.r[0].used ? 1u : 0u) << (2u * o) | (uobj.r[1].used ? 2u : 0u) << (2u * o));
 }

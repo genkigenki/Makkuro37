@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
  * Makkuro37: Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
-/* Serial console on the CDC-ACM function: diagnostics and test hooks (gates, parameters, scenes).
+/* Serial console on the CDC-ACM function: diagnostics and test hooks (gates, parameters, user presets).
  * Runs in the main loop (cdc_task); usb_poll moves the bytes. The baud rate is ignored. Flash is
- * written only by `scene save`; `uboot` does what the SysEx soft key does. */
+ * written only by `user save`; `uboot` does what the SysEx soft key does. */
 #define CON_LINE 64u
 
 static struct {
@@ -196,7 +196,7 @@ static void con_status(void)
     con_kv("voices_on", (int32_t)act);
     con_kv("peak_db10", con_db10(syn.peak));
     con_kv("limiter", (int32_t)syn.overs);
-    con_kv("scene", settings.scene);
+    con_kv("user", settings.user);
     con_kv("flash", flash_ok);
     con_kv("boots", (int32_t)mk_dbg.boots);
     con_kv("usb_resets", (int32_t)usb.resets);
@@ -349,17 +349,15 @@ static void con_params(void)
     con_puts("\r\n");
 }
 
-static void con_scene(const char *p)
+static void con_user(const char *p)                     /* user save|load N: the MINE presets */
 {
     int ok, save = con_word(&p, "save"), load = !save && con_word(&p, "load"), rc;
     uint32_t n = con_num(&p, &ok);
-    if ((!save && !load) || !ok || n < 1u || n > NSCENE) {
-        con_puts("usage: scene save|load 1..8\r\n");
+    if ((!save && !load) || !ok || n < 1u || n > NUSER) {
+        con_puts("usage: user save|load 1..16\r\n");
         return;
     }
-    rc = save ? scene_save(n - 1u) : scene_load(n - 1u);
-    if (!rc && load)
-        settings.scene = (uint8_t)n;
+    rc = save ? user_save(n - 1u) : preset_load(NPRESET + n - 1u);
     ui.dirty = 1;
     con_kv(save ? "saved" : "loaded", rc);
 }
@@ -431,7 +429,7 @@ static void con_exec(const char *p)
 {
     if (con_word(&p, "help") || con_word(&p, "?"))
         con_puts("status  cpu  voices  in  leds  padtest  gate N|all on|off  set vN|g K V  params\r\n"
-                 "scene save|load N  dbg  crash  memr ADDR [LEN]  flr OFF [LEN]  uboot yes\r\n");
+                 "user save|load N  dbg  crash  memr ADDR [LEN]  flr OFF [LEN]  uboot yes\r\n");
     else if (con_word(&p, "status"))
         con_status();
     else if (con_word(&p, "cpu"))
@@ -442,8 +440,8 @@ static void con_exec(const char *p)
         con_gate(p);
     else if (con_word(&p, "set"))
         con_set(p);
-    else if (con_word(&p, "scene"))
-        con_scene(p);
+    else if (con_word(&p, "user"))
+        con_user(p);
     else if (con_word(&p, "dbg"))
         con_dbg();
     else if (con_word(&p, "crash"))

@@ -62,13 +62,12 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 #include "../firmware/src/mix.c"
 #include "../firmware/src/params.c"
 #include "../firmware/src/presets.c"
-/* scenes.c stand-ins */
-#define NSCENE 8u
-static uint8_t scene_used = 5;
-static struct { uint8_t bright, console, boot_scene, scene, speaker; } settings = {4, 1, 0, 0, 0};
-static int scene_save(uint32_t n) { (void)n; return 0; }
-static int scene_load(uint32_t n) { (void)n; return 0; }
-static int scene_load_to(uint32_t n, patch_t *d) { (void)n; patch_init(d); d->g[G_FFL] = 40; return 0; }
+/* scenes.c stand-ins: user presets 1 and 3 stored */
+#define NUSER 16u
+static uint16_t user_used = 5;
+static struct { uint8_t bright, console, rsv0, user, speaker; } settings = {4, 1, 0, 0, 0};
+static int user_save(uint32_t n) { user_used |= (uint16_t)(1u << n); return 0; }
+static int user_load_to(uint32_t n, patch_t *d) { (void)n; patch_init(d); return 0; }
 static void fm1_wdt_feed(void) {}
 static void settings_save(void) {}
 static const char *shot_dir;
@@ -127,20 +126,53 @@ static void page(const char *dir, const char *name, uint32_t menu, uint32_t pg)
     shot(dir, name);
 }
 
+/* the control map from the table (ui.c): docs/CONTROLS.md */
+static void controls_md(const char *path)
+{
+    FILE *f = fopen(path, "w");
+    uint32_t m, p, k;
+    if (!f) { perror(path); exit(1); }
+    fprintf(f, "# Makkuro37: control map\n\nGenerated from the firmware's menu table (tools/docs_img.sh). "
+               "On every page knob Ki sets column i; a value with two choices sits on the column's pads.\n\n"
+               "| Button | Menu | Page | K1 | K2 | K3 | K4 | K5 | K6 | K7 | K8 |\n"
+               "|---|---|---|---|---|---|---|---|---|---|---|\n");
+    for (m = MN_SOUND; m < MN_N; m++) {
+        if (!MENUS[m].name)
+            continue;
+        for (p = 0; p < MENUS[m].n; p++) {
+            ui.menu = (uint8_t)m, ui.page = (uint8_t)p, ui.altmask = 0;
+            menu_build();
+            fprintf(f, "| %s | %s | %s |", p ? "" : MENUS[m].button, p ? "" : MENUS[m].name, page_cur()->name);
+            for (k = 0; k < 8u; k++) {
+                char b[16] = "";
+                if (ui.it[k].kind != IK_NONE)
+                    it_label(&ui.it[k], b, sizeof b);
+                fprintf(f, " %s%s%s%s |", b, ui.it[k].kind != IK_NONE && it_onpads(&ui.it[k]) ? " (pads)" : "",
+                        ui.it[k].alt != NO ? " (pad: RATE)" : "",
+                        ui.it[k].pid == CL_MUTE ? " (pads: on, mod)" : ui.it[k].pid == G_SGATES ? " (pad: on)" : "");
+            }
+            fprintf(f, "\n");
+        }
+    }
+    fprintf(f, "\n| Fader | |\n|---|---|\n");
+    for (k = 0; k < 4u; k++)
+        fprintf(f, "| F%u | %s |\n", k + 1, FADER_NAME[k]);
+    fclose(f);
+    printf("  controls %s\n", path);
+}
+
 static void docs(const char *dir)                       /* every screen, for the guide */
 {
-    static const char *const MN[MN_N] = {"home", "voice", "env", "mod", "mix", "volume", "tuning", "lfo", "seq",
-                                         "fx", "keys", "presets", "setup"};
     uint32_t m, pg, t;
     char n[48];
-    fm1_in.fader[0] = 112, fm1_in.fader[1] = 16, fm1_in.fader[2] = 40, fm1_in.fader[3] = 0;
+    fm1_in.fader[0] = 112, fm1_in.fader[1] = 16, fm1_in.fader[2] = 0, fm1_in.fader[3] = 60;
     boot_frame(2000);
     shot(dir, "boot");
     lcd_fill(0, 0, 240, 240, C_BG);
-    for (t = 0; t < NTHEME; t++) {                     /* the picker, each theme */
-        ui.menu = MN_PRESETS, ui.page = 0;
-        ui.pre_sel = (uint8_t)(t * PRESET_PAGE + 4u);
-        ui.preset = ui.pre_sel;
+    for (t = 0; t <= NTHEME; t++) {                    /* the picker, each theme (and MINE) */
+        ui.menu = MN_PRESETS;
+        ui.preset = (uint8_t)(t * PRESET_PAGE + (t < NTHEME ? 4u : 0u));
+        ui.pre_sel = ui.preset;
         run(200);
         snprintf(n, sizeof n, "presets-%u", t + 1);
         shot(dir, n);
@@ -165,24 +197,25 @@ static void docs(const char *dir)                       /* every screen, for the
     chaos(0, 8);                                       /* CHAOS: all re-rolled */
     run(100);
     shot(dir, "chaos");
-    for (m = MN_VOICE; m < MN_N; m++) {
-        uint32_t np;
-        ui.menu = (uint8_t)m, ui.page = 0;
-        np = menu_build();
-        for (pg = 0; pg < np; pg++) {
-            if (m == MN_PRESETS && pg == 0u)
-                continue;
-            snprintf(n, sizeof n, "menu-%s-%u", MN[m], pg + 1);
+    for (m = MN_SOUND; m < MN_N; m++)                  /* every page of every menu */
+        for (pg = 0; MENUS[m].name && pg < MENUS[m].n; pg++) {
+            const char *nm = MENUS[m].name;
+            char low[16];
+            uint32_t i;
+            for (i = 0; nm[i] && i < 15u; i++)
+                low[i] = (char)(nm[i] >= 'A' && nm[i] <= 'Z' ? nm[i] + 32 : nm[i]);
+            low[i] = 0;
+            snprintf(n, sizeof n, "menu-%s-%u", low, pg + 1);
             page(dir, n, m, pg);
         }
-    }
-    ui.menu = MN_HOME;
-    dlg_open(DLG_SAVE, 3);
+    ui.menu = MN_PRESETS;
+    ui.pre_sel = ui.preset = NPRESET;
+    dlg_open(DLG_SAVE, 0);
     run(200);
     shot(dir, "dialog-save");
     ui.dlg = 0;
     ui.help = 1;
-    for (t = 0; t < 6u; t++) {
+    for (t = 0; t < HELP_N; t++) {
         ui.help_panel = (uint8_t)t;
         ui.help_t = fm1_ms;
         fm1_ms += 300;
@@ -201,8 +234,9 @@ int main(int argc, char **argv)
     preset_make(0, &pt);
     ui_init();
     fm1_in.frames = 400;
-    if (argc > 2 && !strcmp(argv[2], "docs")) {
+    if (argc > 3 && !strcmp(argv[2], "docs")) {
         docs(dir);
+        controls_md(argv[3]);
         return 0;
     }
     for (t = 0; t <= 2000u; t += 100u) {               /* the boot scene, frame by frame */
@@ -214,7 +248,6 @@ int main(int argc, char **argv)
     lcd_fill(0, 0, 240, 240, C_BG);
     run(200);
     shot(dir, "s01_presets");
-    ui.pre_sel = 1;
     preset_load(1);
     ui.menu = MN_HOME;
     run(2500);
@@ -222,29 +255,32 @@ int main(int argc, char **argv)
     pitch_turn(2, 3);
     run(100);
     shot(dir, "s03_home_pitch");
-    page(dir, "s04_wave", MN_VOICE, 0);
-    page(dir, "s05_voice1", MN_VOICE, 1);
-    page(dir, "s06_voice4", MN_VOICE, 4);
+    page(dir, "s04_wave", MN_SOUND, 0);
+    page(dir, "s05_voice1", MN_SOUND, 1);
+    page(dir, "s06_voice3", MN_SOUND, 3);
+    page(dir, "s06a_voice4", MN_SOUND, 4);
     ui.altmask = 0x0F;
-    page(dir, "s06b_detune", MN_MOD, 6);
+    page(dir, "s06b_detune", MN_MOTION, 0);
     ui.altmask = 0;
-    page(dir, "s07_env_attack", MN_ENV, 0);
-    page(dir, "s08_env_gate", MN_ENV, 2);
-    page(dir, "s09_mix_pan", MN_MIX, 0);
-    page(dir, "s10_volume", MN_MIX, 0);
-    page(dir, "s11_fx_filter", MN_FX, 0);
-    page(dir, "s12_fx_lr", MN_FX, 1);
+    page(dir, "s07_attack", MN_ENV, 0);
+    page(dir, "s08_gate", MN_ENV, 2);
+    page(dir, "s09_volume", MN_MIX, 0);
+    page(dir, "s11_fx", MN_FX, 0);
+    page(dir, "s12_filter", MN_FX, 1);
     page(dir, "s13_keys", MN_KEYS, 0);
     page(dir, "s14_seq", MN_SEQ, 0);
     page(dir, "s15_tuning", MN_TUNING, 0);
-    page(dir, "s16_presets_save", MN_PRESETS, 2);
-    ui.menu = MN_HOME;
-    dlg_open(DLG_PRESET, 3);
+    page(dir, "s16_setup", MN_SETUP, 0);
+    ui.menu = MN_PRESETS;
+    ui.pre_sel = NPRESET;
     run(200);
-    shot(dir, "s17_dialog");
+    shot(dir, "s17_mine");
+    dlg_open(DLG_SAVE, 0);
+    run(200);
+    shot(dir, "s18_dialog");
     ui.dlg = 0;
     ui.help = 1;
-    for (t = 0; t < 6u; t++) {
+    for (t = 0; t < HELP_N; t++) {
         char n[16];
         ui.help_panel = (uint8_t)t;
         ui.help_t = fm1_ms;

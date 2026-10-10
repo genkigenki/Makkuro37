@@ -201,7 +201,7 @@ static void home_header(void)
 {
     char b[16];
     cv_begin(240, 32, C_BG);
-    str_cpy(b, PRESET_NAME[ui.preset % NPRESET], sizeof b);
+    preset_name(ui.preset, b, sizeof b);
     cv_text(2, 0, &FONT_L, b, RGB(235, 235, 245));
     if (pt.g[G_RUN])                                     /* the pulser runs: a green triangle */
         for (int32_t i = 0; i < 9; i++)
@@ -256,16 +256,15 @@ static int32_t wave_y(uint32_t w, uint32_t ph, int32_t shape)
 }
 
 /* ------------------------------------------------------------- menus: the eight columns --- */
-static void menu_header(uint32_t npages)
+static void menu_header(const char *name, uint32_t p, uint32_t n)   /* the menu's name, its page "p/n" */
 {
-    uint32_t k;
+    char b[8];
     cv_begin(240, 32, C_BG);
-    cv_text(2, 0, &FONT_L, MENU_NAME[ui.menu], RGB(235, 235, 245));
-    for (k = 0; npages > 1u && k < npages && k < 8u; k++)
-        cv_rect(238 - 8 * ((int32_t)npages - (int32_t)k), 26, 6, 4, k == ui.page ? RGB(255, 255, 255) : RGB(80, 74, 104));
-    if (!str_eq(ui.page_name, MENU_NAME[ui.menu]))      /* the page (VOICE: the voice's number, its colour) */
-        cv_text(236 - text_w(&FONT_L, ui.page_name), 0, &FONT_L, ui.page_name,
-                ui.menu == MN_VOICE ? rgbk(VCOL[ui.page % NV], 256) : RGB(255, 220, 90));
+    cv_text(2, 0, &FONT_L, name, RGB(235, 235, 245));
+    fmt_int(b, (int32_t)p + 1);
+    str_cat(b, "/", sizeof b);
+    fmt_int(b + str_len(b), (int32_t)n);
+    cv_text(236 - text_w(&FONT_L, b), 0, &FONT_L, b, RGB(150, 140, 190));
     cv_blit(0, 0);
 }
 
@@ -280,7 +279,7 @@ static void menu_columns(void)
         uint16_t c = rgbk(VCOL[k], 256), dim = rgbk(VCOL[k], 70);
         if (it->kind == IK_NONE || !d)
             continue;
-        if (it->alt != 0xFF && ((ui.altmask >> k) & 1u))   /* a pair showing its second value: lighter */
+        if (it->alt != NO && ((ui.altmask >> k) & 1u))   /* a pair showing its second value: lighter */
             c = RGB((VCOL[k][0] + 255) >> 1, (VCOL[k][1] + 255) >> 1, (VCOL[k][2] + 255) >> 1);
         cv_rect(x + 1, 0, COLW - 2, 3, c);              /* the column's colour, under its knob */
         v = it_get(it);
@@ -297,7 +296,14 @@ static void menu_columns(void)
             }
             continue;
         }
-        if (it_binary(it)) {                             /* two pads: the lit one is the choice */
+        if (it->pid != NO || it->bid != NO) {            /* its pads: a bit each (left top, right bottom) */
+            int32_t x2 = it->kind == IK_G ? pt.g[it->pid] : pt.v[it->voice][it->pid];
+            if (it->pid != NO)
+                cv_rect(x + 4, 113, 10, 10, (((uint32_t)x2 >> it->pbit) & 1u) ^ it->pinv ? c : dim);
+            if (it->bid != NO)
+                cv_rect(x + 16, 113, 10, 10, ((uint32_t)pt.v[it->voice][it->bid] >> it->pbit) & 1u ? c : dim);
+        }
+        if (it_onpads(it)) {                             /* two pads: the lit one is the choice */
             int on = d->fmt == F_ONOFF ? v != 0 : v == d->min;
             cv_rect(x + 6, 20, 18, 18, on ? c : dim);
             cv_rect(x + 6, 44, 18, 18, d->fmt == F_ENUM && !on ? c : RGB(30, 28, 40));
@@ -314,14 +320,6 @@ static void menu_columns(void)
             int32_t n = d->max - d->min + 1, i, hh = 96 / (n > 1 ? n : 1);
             for (i = 0; i < n; i++)
                 cv_rect(x + 7, 110 - (i + 1) * hh + 1, 16, hh - 2 > 1 ? hh - 2 : 1, i == v - d->min ? c : dim);
-        } else if (d->fmt == F_BITS) {                   /* five generators: on / off */
-            int32_t i;
-            for (i = 0; i < 5; i++) {
-                int on = (v >> i) & 1;
-                if (it->id == CL_MUTE)
-                    on = !on;                            /* (MUTE: lit = sounding) */
-                cv_rect(x + 8, 100 - i * 18, 14, 14, on ? c : dim);
-            }
         } else {                                         /* a bar, from the bottom (signed: from the middle) */
             int32_t lo = d->min, hi = d->max, y0 = 110, y1 = 10;
             cv_rect(x + 8, y1, 14, y0 - y1, RGB(36, 32, 50));
@@ -336,36 +334,37 @@ static void menu_columns(void)
     cv_blit(0, 32);
 }
 
-static void menu_bottom(void)
+static void menu_columns_text(void)   /* a row of the voices: the page's name; else each column's; the values */
 {
     uint32_t k;
+    int row = page_cur()->kind == PG_ROW;
+    if (row)
+        text_c(120, 6, &FONT_L, page_cur()->name, RGB(255, 220, 90));
+    for (k = 0; k < 8u; k++) {
+        char b[16];
+        if (ui.it[k].kind == IK_NONE)
+            continue;
+        if (!row) {                                      /* labels on two rows: room for longer words */
+            int32_t w, cx = COLW * (int32_t)k + COLW / 2;
+            it_label(&ui.it[k], b, sizeof b);
+            b[6] = 0;
+            w = text_w(&FONT_S, b);
+            cx = clamp(cx, w / 2 + 1, 239 - w / 2);      /* (inside the screen) */
+            text_c(cx, (k & 1u) ? 28 : 6, &FONT_S, b, rgbk(VCOL[k], 256));
+        }
+        it_text(&ui.it[k], b, sizeof b);
+        b[3] = 0;
+        text_c(COLW * (int32_t)k + COLW / 2, 56, &FONT_S, b, rgbk(VCOL[k], 200));
+    }
+}
+static void menu_bottom(void)                 /* a turned knob's value, big; a message; or the page's words */
+{
     cv_begin(240, 84, C_BG);
     if (!big_draw(84)) {
-        int perv = 1;
-        for (k = 0; k < 8u; k++)                         /* a row of the 8 voices? then their numbers */
-            perv &= ui.it[k].kind == IK_NONE || (ui.it[k].kind == IK_V && ui.it[k].voice == k);
         if ((int32_t)(ui.msg_until - fm1_ms) > 0)
             text_c(120, 26, &FONT_L, ui.msg, RGB(255, 255, 255));
         else
-            for (k = 0; k < 8u; k++) {
-                char b[16];
-                if (ui.it[k].kind == IK_NONE)
-                    continue;
-                if (perv && ui.menu != MN_VOICE) {
-                    b[0] = (char)('1' + k), b[1] = 0;
-                    text_c(COLW * (int32_t)k + COLW / 2, 6, &FONT_L, b, rgbk(VCOL[k], 256));
-                } else {                                 /* labels on two rows: room for longer words */
-                    int32_t w, cx = COLW * (int32_t)k + COLW / 2;
-                    it_label(&ui.it[k], b, sizeof b);
-                    b[6] = 0;
-                    w = text_w(&FONT_S, b);
-                    cx = clamp(cx, w / 2 + 1, 239 - w / 2);      /* (inside the screen) */
-                    text_c(cx, (k & 1u) ? 28 : 6, &FONT_S, b, rgbk(VCOL[k], 256));
-                }
-                it_text(&ui.it[k], b, sizeof b);
-                b[3] = 0;
-                text_c(COLW * (int32_t)k + COLW / 2, 56, &FONT_S, b, rgbk(VCOL[k], 200));
-            }
+            menu_columns_text();
     }
     cv_blit(0, 156);
 }
@@ -373,29 +372,28 @@ static void menu_bottom(void)
 /* ------------------------------------------------------------- PRESETS: the picker --- */
 static void presets_screen(void)
 {
-    uint32_t k;
-    uint32_t th = ui.pre_sel / PRESET_PAGE;
-    char nm[32], b[8];
+    uint32_t k, th = ui.pre_sel / PRESET_PAGE, base = th * PRESET_PAGE;
+    char nm[32];
     const felucca_font_t *f;
-    fmt_int(nm, ui.pre_sel % PRESET_PAGE + 1);
-    str_cat(nm, " ", sizeof nm);
-    str_cat(nm, PRESET_NAME[ui.pre_sel % NPRESET], sizeof nm);
+    uint32_t n = ui.preset / PRESET_PAGE == th ? ui.preset : base;
+    menu_header("PRESETS", th, NTHEME + 1u);
+    nm[0] = 0;
+    if (th < NTHEME) {                                   /* "5 RITUAL PAD"; MINE: "MINE 3", "EMPTY 4" */
+        fmt_int(nm, (int32_t)(n % PRESET_PAGE + 1u));
+        str_cat(nm, " ", sizeof nm);
+    }
+    preset_name(n, nm + str_len(nm), sizeof nm - str_len(nm));
     f = text_w(&FONT_XL, nm) <= 236 ? &FONT_XL : &FONT_L;
     cv_begin(240, 124, C_BG);
-    cv_text(4, 0, &FONT_L, THEME_NAME[th], RGB(255, 220, 90));          /* the theme, and which of how many */
-    fmt_int(b, th + 1);
-    str_cat(b, "/", sizeof b);
-    fmt_int(b + str_len(b), NTHEME);
-    cv_text(236 - text_w(&FONT_L, b), 0, &FONT_L, b, RGB(150, 140, 190));
+    cv_text(4, 0, &FONT_L, th < NTHEME ? THEME_NAME[th] : "MINE", RGB(255, 220, 90));
     text_c(120, 44, f, nm, RGB(255, 255, 255));
-    text_c(120, 94, &FONT_L, "< >  THEME", RGB(150, 140, 190));
+    text_c(120, 94, &FONT_L, th < NTHEME ? "< >  THEME" : "HOLD PAD: SAVE", RGB(150, 140, 190));
     cv_blit(0, 32);
     cv_begin(240, 84, C_BG);
     for (k = 0; k < 16u; k++) {                          /* the pads as they are lit: one preset each */
-        uint32_t base = (ui.pre_sel / PRESET_PAGE) * PRESET_PAGE;
+        uint32_t m = base + k, has = m < NPRESET || ((user_used >> (m - NPRESET)) & 1u);
         int32_t x = 4 + 29 * (int32_t)(k & 7u), y = k < 8u ? 2 : 30;
-        uint16_t c = base + k < NPRESET ? base + k == ui.preset ? RGB(255, 255, 255) : rgbk(VCOL[k & 7u], 160) : RGB(20, 18, 28);
-        cv_rect(x, y, 25, 25, c);
+        cv_rect(x, y, 25, 25, m == ui.preset ? RGB(255, 255, 255) : rgbk(VCOL[k & 7u], has ? 160 : 30));
     }
     text_c(120, 56, &FONT_L, "PATCH: HOME", RGB(150, 140, 190));
     cv_blit(0, 156);
@@ -404,63 +402,81 @@ static void presets_screen(void)
 /* ------------------------------------------------------------- a dialog --- */
 static void dialog_screen(void)
 {
-    char q[24];
+    char q[24] = "SAVE MINE ";
+    fmt_int(q + str_len(q), ui.dlg_arg + 1);
+    str_cat(q, "?", sizeof q);
     cv_begin(240, 84, RGB(0, 0, 0));
-    if (ui.dlg == DLG_PRESET) {
-        str_cpy(q, PRESET_NAME[ui.dlg_arg % NPRESET], sizeof q);
-        text_c(120, 0, &FONT_L, q, RGB(255, 255, 255));
-    } else {
-        str_cpy(q, ui.dlg == DLG_LOAD ? "LOAD " : "SAVE ", sizeof q);
-        q[5] = (char)('1' + ui.dlg_arg), q[6] = '?', q[7] = 0;
-        text_c(120, 0, &FONT_L, q, RGB(255, 255, 255));
-    }
+    text_c(120, 0, &FONT_L, q, RGB(255, 255, 255));
     cv_rect(COLW * 6 + 2, 40, COLW - 4, 40, RGB(255, 40, 40));   /* red: pad 15, green: pad 16 (under them) */
     cv_rect(COLW * 7 + 2, 40, COLW - 4, 40, RGB(40, 230, 70));
     text_c(COLW * 6 + COLW / 2, 44, &FONT_L, "X", RGB(0, 0, 0));
-    text_c(120, 44, &FONT_L, "OK?", RGB(160, 240, 170));
+    text_c(90, 44, &FONT_L, "REPLACE?", RGB(160, 240, 170));
     cv_blit(0, 156);
 }
 
 /* ------------------------------------------------------------- HELP (KNOB BANK held) --- */
-static void help_lines(int32_t y, const char *const *ln, uint32_t n, uint16_t c)
+/* six panels of six lines; the menus' lines come from the table (ui.c) */
+#define HELP_N 6u
+static const char *help_line(uint32_t p, uint32_t i, char *b, uint32_t n)
 {
-    uint32_t i;
-    for (i = 0; i < n; i++)
-        cv_text(4, y + 29 * (int32_t)i, &FONT_L, ln[i], c);
+    static const char *const T[HELP_N] = {"PADS", "KNOBS", "MENUS", "MENUS", "PLAY", "FADERS"};
+    static const char *const L[HELP_N][6] = {
+        {"", "", "", "TOP: VOICES", "P PULSER", "H HOLD C CHAOS"},
+        {"HOME:", "K1-K8 PITCH", "MENU:", "KNOB=COLUMN", "2 CHOICES:", "THE PADS"},
+        {0, 0, 0, 0, 0, 0},
+        {0, 0, "KNOBB  PRESETS", "PATCH  HOME", "PATCH+ SETUP", "< >    PAGE"},
+        {"PLAY  FREE", "REC   HOLD", "OCT   TRANSP", "FADERB FX", "KNOBB+ HELP", ""},
+        {0, 0, 0, 0, "PITCH BEND", "MOD  CLOSE"}};
+    if (i == 0xFFu)
+        return T[p];
+    if (L[p][i])
+        return L[p][i];
+    if (p == 5u) {                                       /* the faders */
+        str_cpy(b, "F1 ", n);
+        b[1] = (char)('1' + i);
+        str_cat(b, FADER_NAME[i], n);
+        return b;
+    }
+    {   /* the menus: button, name */
+        uint32_t m = MN_SOUND + (p - 2u) * 6u + i;
+        str_cpy(b, MENUS[m].button, n);
+        while (str_len(b) < 7u && str_len(b) + str_len(MENUS[m].name) < 14u)
+            str_cat(b, " ", n);
+        if (str_len(b) == str_len(MENUS[m].button))
+            str_cat(b, " ", n);
+        str_cat(b, MENUS[m].name, n);
+        return b;
+    }
 }
 static void draw_help(void)
 {
-    static const char *const P[6][7] = {
-        {"PADS", "", "", "", "TOP: VOICES", "BOTTOM: STEPS", "P HOLD CHAOS"},
-        {"KNOBS", "HOME:", "K1-K8 PITCH", "MENU:", "KNOB=COLUMN", "2 CHOICES:", "THE PADS"},
-        {"BUTTONS", "PARA   VOICE", "CHORD  ENV", "REPEAT MOD", "GLOBE  MIX", "SCALE  TUNING", "BT     LFO"},
-        {"BUTTONS", "SEQ    SEQ", "FX     FX", "ARP    KEYS", "PATCH PRESET", "KNOBB  HOME", "< >    PAGE"},
-        {"PLAY", "PLAY  FREE", "REC   HOLD", "OCT   TRANSP", "FADERB BANK", "PATCH+ SETUP", "KNOBB+ HELP"},
-        {"FADERS", "F1  CUTOFF", "F2  RESO", "F3  FMOD RATE", "F4  FMOD DEPTH", "PITCH BEND", "MOD  SWEEP"}};
     uint32_t p, k;
+    char b[24];
     if (fm1_ms - ui.help_t >= 2500u) {
         ui.help_t = fm1_ms;
-        ui.help_panel = (uint8_t)((ui.help_panel + 1u) % 6u);
+        ui.help_panel++;
     }
-    p = ui.help_panel;
+    p = ui.help_panel % HELP_N;
     cv_begin(240, 120, RGB(0, 0, 0));
-    text_c(120, 0, &FONT_L, P[p][0], RGB(255, 255, 255));
+    text_c(120, 0, &FONT_L, help_line(p, 0xFFu, b, sizeof b), RGB(255, 255, 255));
     if (p == 0u) {                                       /* the pads in their colours */
-        static const char BOT[8] = {'1', '2', '3', '4', '5', 'P', 'H', 'C'};
+        static const char BOT[8] = {' ', ' ', ' ', ' ', ' ', 'P', 'H', 'C'};
         for (k = 0; k < 16u; k++) {
             int32_t x = 1 + 30 * (int32_t)(k & 7u), y = k < 8u ? 34 : 76;
             char d[2] = {k < 8u ? (char)('1' + k) : BOT[k - 8u], 0};
-            uint16_t c = k < 8u ? rgbk(VCOL[k], 256) : k < 13u ? RGB(150, 70, 255) : k == 13u ? RGB(255, 210, 40)
-                         : k == 14u ? RGB(200, 200, 220) : RGB(255, 60, 200);
+            uint16_t c = k < 8u ? rgbk(VCOL[k], 256) : k == 13u ? RGB(255, 210, 40) : k == 14u ? RGB(200, 200, 220)
+                         : k == 15u ? RGB(255, 60, 200) : RGB(30, 28, 40);
             cv_rect(x, y, 28, 38, c);
             text_c(x + 14, y + 3, &FONT_L, d, RGB(0, 0, 0));
         }
     } else
-        help_lines(30, &P[p][1], 3, RGB(220, 220, 240));
+        for (k = 0; k < 3u; k++)
+            cv_text(4, 30 + 29 * (int32_t)k, &FONT_L, help_line(p, k, b, sizeof b), RGB(220, 220, 240));
     cv_blit(0, 0);
     cv_begin(240, 120, RGB(0, 0, 0));
-    help_lines(2, &P[p][4], 3, RGB(220, 220, 240));
-    for (k = 0; k < 6u; k++)
+    for (k = 3; k < 6u; k++)
+        cv_text(4, 2 + 29 * (int32_t)(k - 3u), &FONT_L, help_line(p, k, b, sizeof b), RGB(220, 220, 240));
+    for (k = 0; k < HELP_N; k++)
         cv_rect(84 + 12 * (int32_t)k, 112, 8, 6, k == p ? RGB(255, 255, 255) : RGB(70, 66, 90));
     cv_blit(0, 120);
 }
@@ -470,7 +486,7 @@ static void draw_frame(void)
 {
     static uint32_t t_cre = 0xFFFF0000u, t_rest, t_help;
     static uint8_t last_menu = 0xFF, last_page, in_help, last_dlg;
-    uint32_t now = fm1_ms, v, np = 1;
+    uint32_t now = fm1_ms, v;
     if (ui.help) {
         if (!in_help || now - t_help >= 200u) {
             in_help = 1;
@@ -479,8 +495,7 @@ static void draw_frame(void)
         }
         return;
     }
-    if (ui.menu != MN_HOME)
-        np = menu_build();
+    menu_build();
     if (in_help || last_menu != ui.menu || last_page != ui.page || last_dlg != ui.dlg) {   /* anew */
         in_help = 0;
         last_menu = ui.menu, last_page = ui.page, last_dlg = ui.dlg;
@@ -511,10 +526,12 @@ static void draw_frame(void)
     if (ui.dirty || now - t_rest >= 120u) {
         ui.dirty = 0;
         t_rest = now;
-        menu_header(np);
-        if (ui.menu == MN_PRESETS && ui.page == 0u)
+        if (ui.menu == MN_PRESETS) {
             presets_screen();
-        else {
+            if (ui.dlg)
+                dialog_screen();
+        } else {
+            menu_header(MENUS[ui.menu].name, ui.page, MENUS[ui.menu].n);
             menu_columns();
             if (ui.dlg)
                 dialog_screen();
