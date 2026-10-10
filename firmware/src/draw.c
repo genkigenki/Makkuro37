@@ -486,7 +486,8 @@ static void draw_frame(void)
 /* the camera flies in over a neon grid towards the creatures standing in a row, swinging round to face them;
  * they wake one by one (a rising chord), the row lands where the home screen has it, then the name */
 #define BOOT_F 200
-#define BOOT_HOR 70
+#define BOOT_HOR 64
+#define BOOT_H 250                              /* the camera's height above the ground, x 100 */
 static void boot_frame(uint32_t t)
 {
     static const int16_t CHORD[NV] = {4800, 5200, 5500, 5900, 6000, 6400, 6700, 7100};   /* C E G B C E G B */
@@ -514,20 +515,23 @@ static void boot_frame(uint32_t t)
             cv_rect(120 - w, y, 2 * w, 2, RGB(255, 120 - k * 3, 60 + k * 6));
         }
         for (k = -12; k <= 12; k++) {                    /* the grid: lines along z */
-            int32_t x0 = k * 100, z0 = -150, z1 = 4000, X0, Z0, X1, Z1, sx0, sx1, sy0, sy1;
+            int32_t x0 = k * 100, z0 = -2000, z1 = 4000, X0, Z0, X1, Z1, sx0, sx1, sy0, sy1;
             X0 = (x0 * ca - z0 * sa) >> 15, Z0 = ((x0 * sa + z0 * ca) >> 15) + d;
             X1 = (x0 * ca - z1 * sa) >> 15, Z1 = ((x0 * sa + z1 * ca) >> 15) + d;
-            if (Z0 < 50) Z0 = 50;
-            if (Z1 < 50) Z1 = 50;
-            sx0 = 120 + X0 * BOOT_F / Z0, sy0 = BOOT_HOR + 150 * BOOT_F / Z0;
-            sx1 = 120 + X1 * BOOT_F / Z1, sy1 = BOOT_HOR + 150 * BOOT_F / Z1;
+            if (Z0 < 60) {                               /* (cut where it passes the camera) */
+                X0 = X1 + (X0 - X1) * (Z1 - 60) / (Z1 - Z0 > 0 ? Z1 - Z0 : 1);
+                Z0 = 60;
+            }
+            if (Z1 < 60) Z1 = 60;
+            sx0 = 120 + X0 * BOOT_F / Z0, sy0 = BOOT_HOR + BOOT_H * BOOT_F / Z0;
+            sx1 = 120 + X1 * BOOT_F / Z1, sy1 = BOOT_HOR + BOOT_H * BOOT_F / Z1;
             cv_line(sx0, sy0, sx1, sy1, RGB(200, 30, 170));
         }
         for (k = 0; k < 24; k++) {                       /* across, scrolling towards us */
-            int32_t z = k * 160 - (int32_t)((t / 4u) % 160u), Zc = z + d, sy;
+            int32_t z = k * 160 - 1200 - (int32_t)((t / 4u) % 160u), Zc = z + d, sy;
             if (Zc < 60)
                 continue;
-            sy = BOOT_HOR + 150 * BOOT_F / Zc;
+            sy = BOOT_HOR + BOOT_H * BOOT_F / Zc;
             cv_rect(0, sy, 240, 1, RGB(200 * 300 / (Zc > 300 ? Zc : 300), 30, 170 * 300 / (Zc > 300 ? Zc : 300)));
         }
         {   /* the creatures: far ones first */
@@ -549,7 +553,7 @@ static void boot_frame(uint32_t t)
                     continue;
                 r = 45 * BOOT_F / Z;                     /* body radius in pixels */
                 sx = 120 + X * BOOT_F / Z;
-                sy = BOOT_HOR + 150 * BOOT_F / Z - r - 4;
+                sy = BOOT_HOR + BOOT_H * BOOT_F / Z - r - 4;
                 wake = (int32_t)t - 600 - v * 90;
                 if (wake > 0 && rung <= (uint32_t)v && half == 0) {
                     chime_hit(CHORD[v]);
@@ -561,8 +565,9 @@ static void boot_frame(uint32_t t)
         }
         if (t > 1300u) {                                 /* the name, then the credit */
             int32_t k2 = clamp((int32_t)(t - 1300u) * 256 / 400, 0, 256);
-            text_c(120, 6, &FONT_XL, "MAKKURO37", RGB(255 * k2 >> 8, 64 * k2 >> 8, 200 * k2 >> 8));
-            text_c(120, 204, &FONT_L, "by genkigenki", RGB(200 * k2 >> 8, 190 * k2 >> 8, 240 * k2 >> 8));
+            cv_rect(0, 158, 240, 82, RGB(4, 0, 12));     /* (a calm band under the name) */
+            text_c(120, 162, &FONT_XL, "MAKKURO37", RGB(255 * k2 >> 8, 64 * k2 >> 8, 200 * k2 >> 8));
+            text_c(120, 208, &FONT_L, "by genkigenki", RGB(200 * k2 >> 8, 190 * k2 >> 8, 240 * k2 >> 8));
         }
         cv_oy = 0;
         cv_blit(0, (uint32_t)y0);
