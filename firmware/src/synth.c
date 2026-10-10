@@ -5,7 +5,9 @@
 static patch_t pt;                         /* the sound (scene) */
 static vstate_t vs[NV];
 static volatile uint8_t gate_in[NV];       /* gates from the pads / keys (UI) */
+static volatile uint8_t gate_vel[NV] = {100, 100, 100, 100, 100, 100, 100, 100};   /* the pads' velocity */
 static int32_t modv[MS_N];                 /* modulation sources, Q15 */
+static volatile int32_t joy_x, joy_y;      /* wheels, Q15: X -32767..32767 (springs back), Y 0..32767 */
 static struct {
     int32_t peak;                          /* |out| max since the last read (console), Q15 */
     uint32_t overs;                        /* samples the limiter had to bend */
@@ -267,7 +269,8 @@ static void adsr(vstate_t *s, const int16_t *p, uint32_t gate)
 
 static void vco_tick(uint32_t v, vstate_t *s, const int16_t *p, int32_t fine, int32_t glide)
 {
-    int32_t tgt = (key_cents[v - 3u] + OCT_CENTS[p[VC_OCT] & 7] + p[VC_TUNE] + fine + mod_cents(p)) * 16, w;
+    int32_t tgt = (key_cents[v - 3u] + OCT_CENTS[p[VC_OCT] & 7] + p[VC_TUNE] + fine + mod_cents(p) +
+                   ((joy_x * 200) >> 15)) * 16, w;                 /* the joystick bends +-2 semitones */
     if (!s->pitch || !glide)
         s->pitch = tgt;
     else
@@ -335,6 +338,76 @@ static void vco_render(int32_t *o4, int32_t *o5, uint32_t n)
     a->ph[0] = pha, b->ph[0] = phb, a->last[0] = ya;
 }
 
+/* ------------------------------------------------------------- modulation --- */
+/* LFO A (slow) / B (fast): square .. triangle, positive only; the joystick (wheels, from the
+ * UI); the 5-step sequencer on the PULSER clock; DRIFT, a slow random walk. Once per control tick. */
+static struct {
+    uint32_t pa, pb, pp;                   /* LFO A, LFO B, pulser phases */
+    uint8_t step, gate;                    /* sequencer step 0..4, its gate now */
+    volatile uint8_t restart;              /* (UI: tap tempo) start at step 1 on the next tick */
+    int32_t drift, dtarget;
+    uint32_t dt, rnd;
+} md;
+static volatile uint32_t pulser_inc;       /* tap tempo: phase step per tick, 0 = the PULSER knob */
+
+static int32_t lfo_val(uint32_t ph, int32_t wave)    /* 0..32767; wave 0 square .. 127 triangle */
+{
+    int32_t sq = ph < 0x80000000u ? 32767 : 0, tri = (int32_t)((ph < 0x80000000u ? ph : ~ph) >> 16);
+    return sq + (((tri - sq) * wave) >> 7);
+}
+
+static void mod_tick(void)
+{
+    uint32_t inc, old;
+    clk_edges = 0;
+    old = md.pa;
+    md.pa += LFO_A[pt.g[G_LARATE] & 127];
+    clk_edges |= md.pa < old;
+    old = md.pb;
+    md.pb += LFO_B[pt.g[G_LBRATE] & 127];
+    clk_edges |= (uint8_t)((md.pb < old) << 1);
+    modv[MS_LFOA] = lfo_val(md.pa, pt.g[G_LAWAVE]);
+    modv[MS_LFOB] = lfo_val(md.pb, pt.g[G_LBWAVE]);
+    modv[MS_JOYX] = clamp(joy_x + pt.g[G_JXOFS] * 512, -32767, 32767);
+    modv[MS_JOYY] = clamp(joy_y + pt.g[G_JYOFS] * 512, -32767, 32767);
+    if (md.restart) {
+        md.restart = 0;
+        md.step = 0;
+        md.pp = 0;
+        clk_edges |= 4u;
+    }
+    if (pt.g[G_RUN]) {
+        inc = pulser_inc ? pulser_inc : PULSE[pt.g[G_PULSER] & 127];
+        old = md.pp;
+        md.pp += inc;
+        if (md.pp < old) {                         /* the next step */
+            md.step = (uint8_t)(md.step + 1u >= 3u + (uint32_t)pt.g[G_STAGES] ? 0u : md.step + 1u);
+            clk_edges |= 4u;
+        }
+        md.gate = (uint8_t)(md.pp < 0x80000000u && ((pt.g[G_SGATES] >> md.step) & 1));
+    } else
+        md.gate = 0;
+    if (md.step >= 3u + (uint32_t)pt.g[G_STAGES])
+        md.step = 0;
+    modv[MS_SEQ] = pt.g[G_SEQ1 + md.step] * 258;
+    if (++md.dt >= 2756u) {                        /* DRIFT: a new aim every ~2 s */
+        md.dt = 0;
+        md.dtarget = (int32_t)xorshift(&md.rnd) >> 16;
+    }
+    md.drift += (md.dtarget - md.drift) >> 9;
+    modv[MS_DRIFT] = md.drift;
+}
+
+static uint32_t gate_src(uint32_t s)
+{
+    switch (s) {
+    case GS_SEQ: return md.gate;
+    case GS_LFOA: return modv[MS_LFOA] > 16384;
+    case GS_LFOB: return modv[MS_LFOB] > 16384;
+    default: return 0;
+    }
+}
+
 /* ------------------------------------------------------------- the mix --- */
 static int32_t vol_q15(int32_t v) { v = clamp(v, 0, 127); return v * v * 2; }
 
@@ -343,10 +416,12 @@ static void synth_tick(void)
     uint32_t v, trig = key_trig;
     int32_t fine = pt.g[G_FINE], glide = clamp(pt.g[G_GLIDE], 0, 127) * 3 / 4;
     syn.ticks++;
+    mod_tick();
     for (v = 0; v < NV; v++) {
         vstate_t *s = &vs[v];
         const int16_t *p = pt.v[v];
-        uint32_t gate = gate_in[v];
+        uint32_t gate = gate_in[v] | gate_src((uint32_t)p[VP_GSRC]), vel = gate_vel[v];
+        int32_t att = clamp(p[VP_ATT] + (100 - (int32_t)vel) / 3, 0, 127);   /* soft pad: slower swell */
         if (VTYPE[v] == VT_VCO) {
             gate |= key_gate;
             if (s->trig != (uint8_t)trig && key_gate)
@@ -355,7 +430,7 @@ static void synth_tick(void)
             adsr(s, p, gate);
             vco_tick(v, s, p, fine, glide);
         } else {
-            env_ar(s, gate, (uint32_t)p[VP_ATT], (uint32_t)p[VP_RLS]);
+            env_ar(s, gate, (uint32_t)att, (uint32_t)p[VP_RLS]);
             if (s->stage) {
                 if (VTYPE[v] == VT_CLASSIC)
                     classic_tick(s, p, fine);
@@ -363,7 +438,7 @@ static void synth_tick(void)
                     noise_tick(s, p, fine);
             }
         }
-        s->level = (env_amp(s->env) * vol_q15(p[VP_VOL])) >> 15;
+        s->level = (((env_amp(s->env) * vol_q15(p[VP_VOL])) >> 15) * (16384 + (int32_t)vel * 129)) >> 15;
     }
     modv[MS_SH3] = vs[2].sh;
     modv[MS_SH8] = vs[7].sh;

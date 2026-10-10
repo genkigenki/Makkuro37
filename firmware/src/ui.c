@@ -35,6 +35,9 @@ static struct {
     uint8_t keyq[8], nkeys;                /* held keys, oldest first */
     uint8_t fad_last[4];
     uint32_t patch_down;                   /* PATCH held since (ms), 0 = up */
+    uint32_t btn_t[FM1_NBTN];              /* page buttons: pressed at (ms | 1), 0 = up or used */
+    uint32_t tap_t;                        /* PULSER pad: last tap */
+    uint8_t fx_off;                        /* bit 0 / 1: effector L / R off (pads 15, 16) */
 } ui;
 
 static void keys_poll(void);
@@ -346,6 +349,8 @@ static void it_turn(const item_t *it, uint32_t e, int32_t s)
         return;
     case IK_G:
         v = pt.g[it->id];
+        if (it->id == G_PULSER)
+            pulser_inc = 0;                                /* the knob takes over from the tapped tempo */
         pt.g[it->id] = (int16_t)clamp(v + accel(e, s, d->max - d->min), d->min, d->max);
         return;
     }
@@ -375,18 +380,127 @@ static void gate_release(uint32_t v)
         ui.pad_gate[v] = 0;                /* held: momentary */
 }
 
+/* the PULSER pad: a tap starts the sequencer, taps in a row set its tempo, held 0.6 s stops it */
+static void tap_press(void)
+{
+    uint32_t dt = fm1_ms - ui.tap_t;
+    if (pt.g[G_RUN] && dt >= 60u && dt <= 3000u) {
+        pulser_inc = 0xFFFFFFFFu / (dt * 1378u / 1000u);   /* one step per tap interval */
+        md.restart = 1;
+        ui_say("TAP", 0);
+    } else if (!pt.g[G_RUN]) {
+        pt.g[G_RUN] = 1;
+        md.restart = 1;
+    }
+    ui.tap_t = fm1_ms;
+    ui.dirty = 1;
+}
+
 static void pads_poll(void)
 {
     int32_t e;
     while ((e = smk_pad_take()) >= 0) {
         uint32_t pad = (uint32_t)e >> 8, vel = (uint32_t)e & 255u;
         if (pad < 8u) {                    /* top row: the voices' gates */
-            if (vel)
+            if (vel) {
+                gate_vel[pad] = (uint8_t)vel;
                 gate_press(pad);
-            else
+            } else
                 gate_release(pad);
+        } else if (pad < 13u) {            /* 9..13: the sequencer's step gates */
+            if (vel)
+                pt.g[G_SGATES] ^= (int16_t)(1 << (pad - 8u));
+            ui.dirty = 1;
+        } else if (pad == 13u) {           /* 14: PULSER */
+            if (vel)
+                tap_press();
+            else if (fm1_ms - ui.tap_t >= 600u)
+                pt.g[G_RUN] = 0;
+        } else if (vel) {                  /* 15, 16: effector L / R on */
+            ui.fx_off ^= (uint8_t)(1u << (pad - 14u));
+            ui.dirty = 1;
         }
     }
+}
+
+/* ------------------------------------------------------------- wheels --- */
+/* the pitch and mod wheels as the joystick, self-calibrating (SLOOP's smk_wheels): X springs back to
+ * its centre (taken at power-on, followed while it rests), Y 0..32767, up = more */
+static void wheels_poll(void)
+{
+    enum { DEAD = 12, SPAN0 = 80, MOD_LO = 485, MOD_HI = 615 };
+    static int32_t pc, plo, phi, mlo, mhi, rest;
+    int32_t p = fm1_in.wheel[0], m = fm1_in.wheel[1], d, x;
+    if (fm1_in.frames < 300u)
+        return;
+    if (!pc) {
+        pc = p;
+        plo = p - SPAN0;
+        phi = p + SPAN0;
+        mlo = m < MOD_LO ? m : MOD_LO;
+        mhi = m > MOD_HI ? m : MOD_HI;
+    }
+    plo = p < plo ? p : plo;
+    phi = p > phi ? p : phi;
+    mlo = m < mlo ? m : mlo;
+    mhi = m > mhi ? m : mhi;
+    d = p - pc;
+    if (d > -DEAD && d < DEAD) {
+        x = 0;
+        if (++rest > 200) {
+            pc += d > 0 ? 1 : d < 0 ? -1 : 0;
+            rest = 0;
+        }
+    } else {
+        rest = 0;
+        x = d > 0 ? (d - DEAD) * 32767 / (phi - pc - DEAD > 1 ? phi - pc - DEAD : 1)
+                  : (d + DEAD) * 32767 / (pc - plo - DEAD > 1 ? pc - plo - DEAD : 1);
+    }
+    joy_x = clamp(x, -32767, 32767);
+    joy_y = mhi - m <= DEAD ? 0 : clamp((mhi - m - DEAD) * 32767 / (mhi - mlo - DEAD > 1 ? mhi - mlo - DEAD : 1), 0, 32767);
+}
+
+/* ------------------------------------------------------------- live actions --- */
+/* CHAOS (ARP held): the selected voice re-rolled within the tuning set */
+static void chaos(void)
+{
+    uint32_t v = ui.voice, g, set = (uint32_t)pt.g[G_TSET], root = (uint32_t)pt.g[G_ROOT];
+    int16_t *p = pt.v[v];
+    static uint32_t seed = 0x2545F491u;
+    seed ^= fm1_ms;
+    if (VTYPE[v] == VT_CLASSIC) {
+        for (g = 0; g < 5u; g++) {
+            int32_t lo = GEN_LO[g] * 100, span = (GEN_HI[g] - GEN_LO[g]) * 100;
+            int32_t c = tun_next(set, root, lo + (int32_t)(xorshift(&seed) % (uint32_t)span) - 1, 1);
+            p[CL_TUNE1 + g] = vp_clamp(v, CL_TUNE1 + g, c - lo);
+        }
+    } else if (VTYPE[v] == VT_NOISE) {
+        p[NZ_PITCH] = (int16_t)(20 + xorshift(&seed) % 100u);
+        p[NZ_RATE] = (int16_t)(xorshift(&seed) % 110u);
+        p[NZ_FMAMT] = (int16_t)(xorshift(&seed) % 128u);
+        p[NZ_DIV] = (int16_t)(1 + xorshift(&seed) % 8u);
+        p[NZ_MODE] = (int16_t)(xorshift(&seed) % 4u);
+    } else {
+        p[VC_WAVE] = (int16_t)(xorshift(&seed) % 6u);
+        p[VC_SHAPE] = (int16_t)(xorshift(&seed) % 128u);
+        p[VC_FM] = (int16_t)(xorshift(&seed) % 2u ? xorshift(&seed) % 70u : 0u);
+    }
+    ui_say("CHAOS!", 0);
+}
+
+/* HOLD ALL (CHORD held): everything sounding stays on; again: all off */
+static void hold_all(void)
+{
+    uint32_t v, any = 0;
+    for (v = 0; v < NV; v++)
+        any |= vs[v].stage && !ui.latched[v];
+    for (v = 0; v < NV; v++) {
+        uint32_t on = any && vs[v].stage;
+        ui.latched[v] = (uint8_t)on;
+        ui.pad_gate[v] = (uint8_t)on;
+        ui.ignore_rel[v] = 0;
+    }
+    ui_say(any ? "HOLD ALL" : "ALL OFF", 0);
 }
 
 /* ------------------------------------------------------------- faders --- */
@@ -444,8 +558,7 @@ static void buttons_poll(void)
         switch (b) {
         case B_FADERBANK:
             ui.fbank = (uint8_t)((ui.fbank + 1u) & 3u);
-            for (rel = 0; rel < 4u; rel++)
-                ui.fad_last[rel] = 0xFF;
+            ui.fad_last[0] = ui.fad_last[1] = ui.fad_last[2] = ui.fad_last[3] = 0xFF;
             ui_say("FADERS ", ui.fbank == 0 ? "A: VOL 1-4" : ui.fbank == 1 ? "B: VOL 5-8"
                               : ui.fbank == 2 ? "C: FILTER" : "D: FX LFO MST");
             break;
@@ -481,6 +594,19 @@ static void buttons_poll(void)
         default:
             if (BTN_PAGE[b] >= 0)
                 page_go((uint32_t)BTN_PAGE[b]);
+            if (b == B_ARP || b == B_CHORD)
+                ui.btn_t[b] = fm1_ms | 1u;
+        }
+    }
+    for (b = B_ARP; b <= B_CHORD; b += B_CHORD - B_ARP) {   /* held 0.6 s: ARP = CHAOS, CHORD = HOLD ALL */
+        if ((rel >> b) & 1u)
+            ui.btn_t[b] = 0;
+        if (ui.btn_t[b] && fm1_ms - ui.btn_t[b] >= 600u) {
+            ui.btn_t[b] = 0;
+            if (b == B_ARP)
+                chaos();
+            else
+                hold_all();
         }
     }
     if ((rel >> B_PATCH) & 1u && ui.patch_down) {           /* PATCH: tap = SCENES, held = settings */
@@ -553,12 +679,31 @@ static const uint8_t VCOL[NV][3] = {{255, 46, 136}, {176, 76, 255}, {46, 230, 25
                                     {255, 106, 0}, {61, 123, 255}, {255, 79, 216}, {46, 255, 154}};
 static void ui_leds(void)
 {
-    uint32_t v, b, sc = 6u + settings.bright * 6u;          /* pad brightness of 255 */
+    uint32_t v, b, sc = 4u + settings.bright * 12u;         /* pad brightness of 256 */
     for (v = 0; v < NV; v++) {
         int32_t l = vs[v].level, k = 8 + (l >> 7);         /* idle: a dim glow; sounding: up to full */
         k = k > 256 ? 256 : k;
         padled_set(v, (uint8_t)(VCOL[v][0] * k * sc >> 16), (uint8_t)(VCOL[v][1] * k * sc >> 16),
                    (uint8_t)(VCOL[v][2] * k * sc >> 16));
+    }
+    for (b = 0; b < 5u; b++) {                              /* 9..13: steps (lit: gate on, white: playhead) */
+        uint32_t on = (pt.g[G_SGATES] >> b) & 1, here = pt.g[G_RUN] && md.step == b, k = sc;
+        if (b >= 3u + (uint32_t)pt.g[G_STAGES])
+            padled_set(8u + b, 0, 0, 0);
+        else if (here)
+            padled_set(8u + b, (uint8_t)(200 * k >> 8), (uint8_t)(200 * k >> 8), (uint8_t)(220 * k >> 8));
+        else
+            padled_set(8u + b, (uint8_t)((on ? 120 : 10) * k >> 8), (uint8_t)((on ? 20 : 4) * k >> 8),
+                       (uint8_t)((on ? 255 : 20) * k >> 8));
+    }
+    {   /* 14: the pulser's beat; 15, 16: effector L / R */
+        uint32_t beat = pt.g[G_RUN] && md.pp < 0x40000000u;
+        padled_set(13, (uint8_t)((beat ? 255 : 30) * sc >> 8), (uint8_t)((beat ? 255 : 20) * sc >> 8), (uint8_t)(10 * sc >> 8));
+        for (b = 0; b < 2u; b++) {
+            uint32_t on = !((ui.fx_off >> b) & 1u) && pt.g[G_FXL + b];
+            padled_set(14u + b, (uint8_t)((on ? 40 : 6) * sc >> 8), (uint8_t)((on ? 255 : 20) * sc >> 8),
+                       (uint8_t)((on ? 200 : 16) * sc >> 8));
+        }
     }
     for (b = 0; b < FM1_NBTN; b++)
         fm1_led_key(b, BTN_PAGE[b] == (int8_t)ui.page && !ui.settings &&
@@ -585,6 +730,7 @@ static void ui_input(void)
     uint32_t v;
     pads_poll();
     keys_poll();
+    wheels_poll();
     buttons_poll();
     knobs_poll();
     faders_poll();

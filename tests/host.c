@@ -79,6 +79,7 @@ static void reset(void)
     memset(vs, 0, sizeof vs);
     memset((void *)gate_in, 0, sizeof gate_in);
     key_gate = 0;
+    memset(&md, 0, sizeof md);
     patch_init(&pt);
 }
 #define SEC(s) ((uint32_t)((s) * FS / CTL))
@@ -129,6 +130,23 @@ static void s_vco_loop(uint32_t b)
     pt.v[3][VC_WAVE] = W_SAWMORPH;
     pt.v[3][VC_SHAPE] = (int16_t)(b * 127 / SEC(4) > 127 ? 127 : b * 127 / SEC(4));
 }
+static void s_seq(uint32_t b)                      /* voice 1 gated by the sequencer, LFO A wobbling gens 4 + 5 */
+{
+    (void)b;
+    pt.g[G_RUN] = 1;
+    pt.g[G_PULSER] = 70;
+    pt.g[G_SGATES] = 0x1B;
+    pt.v[0][VP_GSRC] = GS_SEQ;
+    pt.v[0][VP_ATT] = 10;
+    pt.v[0][VP_RLS] = 40;
+    pt.v[0][CL_MOD] = 0x18;
+    pt.v[0][VP_MSRC] = MS_LFOB;
+    pt.v[0][VP_MAMT] = 50;
+    pt.v[3][VP_MSRC] = MS_SEQ;                      /* and the sequencer plays VCO 4 */
+    pt.v[3][VP_MAMT] = 80;
+    pt.v[3][VC_EG] = EG_HOLD;
+    gate_in[3] = 1;
+}
 
 int main(int argc, char **argv)
 {
@@ -152,6 +170,8 @@ int main(int argc, char **argv)
     render(dir, "vco_fm_sync", 5, s_vco_fm_sync, 3000);
     reset();
     render(dir, "vco_loop_morph", 5, s_vco_loop, 3000);
+    reset();
+    render(dir, "seq_lfo", 6, s_seq, 3000);
     reset();
     render(dir, "all_voices", 5, s_all, 3000);
     printf(fails ? "host: %d FAILED\n" : "host: all ok\n", fails);
