@@ -154,7 +154,7 @@ static int creature_cell(uint32_t v, int force)
     bob = sleep ? isin(now * 1200000u, 1) : isin(cre[v].ph, 1 + (lv >> 14));
     h = (uint32_t)(lv >> 9) * 31u + (uint32_t)hit * 7u + (uint32_t)bob * 131u + (uint32_t)blink * 3u +
         (sleep ? 0u : (now >> 7)) + (v == ui.voice) * 997u + ui.latched[v] * 4441u + ui.pad_gate[v] * 7919u +
-        (uint32_t)pt.v[v][VP_GSRC] * 104729u;
+        (uint32_t)pt.v[v][VP_GSRC] * 104729u + 1u;   /* (never 0: 0 = not drawn yet) */
     if (!force && h == cre[v].drawn)
         return 0;
     cre[v].drawn = h;
@@ -163,7 +163,7 @@ static int creature_cell(uint32_t v, int force)
     if (t < 256)
         hammer(CW / 2 + 3, 31 - 16, t);
     if (sleep && ((now >> 10) + v) % 4u == 0u)
-        cv_text(CW / 2 + 16, 4 - (int32_t)((now >> 6) & 7u), &FONT_L, "z", RGB(140, 130, 190));
+        cv_text(CW - 12, 6 - (int32_t)((now >> 7) & 3u), &FONT_S, "z", RGB(170, 160, 220));   /* (inside its cell) */
     {   /* its number, big, and how its gate runs: HOLD (a solid square), held now (a ring), SEQ (steps),
          * LFO (a wave) */
         char d[2] = {(char)('1' + v), 0};
@@ -657,7 +657,7 @@ static void draw_help(void)
 
 static void draw_frame(void)
 {
-    static uint32_t t_cre, t_scene, last, t_help;
+    static uint32_t t_cre = 0xFFFF0000u, t_scene, last, t_help;   /* (the creatures at once on the first call) */
     static uint8_t hdr_page = 0xFF, hdr_sub, hdr_voice, hdr_set, in_help;
     uint32_t now = fm1_ms, v;
     if (ui.help) {

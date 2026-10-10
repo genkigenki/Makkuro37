@@ -757,7 +757,7 @@ static void ui_leds(void)
 {
     uint32_t v, b, sc = 4u + settings.bright * 12u;         /* pad brightness of 256 */
     for (v = 0; v < NV; v++) {
-        int32_t l = vs[v].level, k = 8 + (l >> 7);         /* idle: a dim glow; sounding: up to full */
+        int32_t l = vs[v].level, k = vs[v].stage ? 120 + (l >> 8) : 10;   /* idle: a dim glow; sounding: bright */
         k = k > 256 ? 256 : k;
         padled_set(v, (uint8_t)(VCOL[v][0] * k * sc >> 16), (uint8_t)(VCOL[v][1] * k * sc >> 16),
                    (uint8_t)(VCOL[v][2] * k * sc >> 16));

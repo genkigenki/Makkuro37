@@ -50,6 +50,13 @@ sh tests/run_tests.sh OUTDIR      # engine renders (WAV), screens (PNG), board l
 python tools/fm1_install.py --yes build/makkuro37.fwsc
 ```
 
+Simulator (the firmware's engine and screen in the browser, Emscripten in `~/emsdk`):
+
+```
+sh web/sim/build.sh && python3 -m http.server -d build/sim 8738    # open http://localhost:8738
+node web/sim/sim_test.mjs build/sim/sim.wasm                         # its test
+```
+
 Identity `SMK-37 Pro_700`, USB MIDI port `Makkuro37`. Its data area is tagged `SMK37DATAMAKKURO`: installing it
 clears another firmware's stored data (and the other way round). USB serial console: `help`.
 

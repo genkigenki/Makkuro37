@@ -1,0 +1,223 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only
+     Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Makkuro37 simulator</title>
+<style>
+  :root { --bg: #0b0910; --panel: #17141f; --edge: #2b2638; --txt: #d8d4e8; --dim: #7d7896; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--txt); font: 13px/1.3 system-ui, sans-serif; user-select: none; }
+  header { padding: 10px 18px; display: flex; gap: 16px; align-items: baseline; }
+  header h1 { margin: 0; font-size: 20px; color: #ff2e88; letter-spacing: 2px; }
+  header span { color: var(--dim); }
+  .smk { margin: 0 auto 20px; width: 1120px; max-width: 100%; background: var(--panel); border: 1px solid var(--edge);
+         border-radius: 14px; padding: 16px; display: grid; grid-template-columns: 500px 1fr; gap: 16px; }
+  #screen { width: 480px; height: 480px; image-rendering: pixelated; border: 10px solid #000; border-radius: 6px;
+            background: #000; display: block; }
+  .right { display: flex; flex-direction: column; gap: 14px; }
+  .knobs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .knob { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: ns-resize; }
+  .knob .dial { width: 54px; height: 54px; border-radius: 50%; background: #25212f; border: 3px solid var(--c, #555);
+                position: relative; }
+  .knob .dial::after { content: ""; position: absolute; left: 50%; top: 4px; width: 3px; height: 18px; margin-left: -1.5px;
+                       background: #fff; border-radius: 2px; transform-origin: 50% 21px; transform: rotate(var(--a, 0deg)); }
+  .knob b { font-size: 12px; } .knob small { color: var(--dim); font-size: 11px; }
+  .buttons { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  .btn { background: #26222f; border: 1px solid var(--edge); border-radius: 6px; padding: 6px 4px; text-align: center;
+         cursor: pointer; color: var(--txt); font-size: 11px; position: relative; }
+  .btn small { display: block; color: var(--dim); font-size: 10px; }
+  .btn.lit { box-shadow: 0 0 0 2px #ffcc33 inset, 0 0 12px #ffcc3388; }
+  .btn:active { background: #3a3446; }
+  .row2 { grid-column: 1 / -1; display: flex; gap: 22px; align-items: stretch; }
+  .wheels, .faders { display: flex; gap: 14px; align-items: center; }
+  .vslider { writing-mode: vertical-lr; direction: rtl; height: 150px; width: 28px; }
+  .lab { text-align: center; color: var(--dim); font-size: 11px; }
+  .pads { display: grid; grid-template-columns: repeat(8, 62px); gap: 8px; }
+  .pad { height: 62px; border-radius: 8px; background: #1d1a24; border: 1px solid #333; cursor: pointer; position: relative; }
+  .pad i { position: absolute; left: 6px; top: 4px; font-style: normal; color: #ffffffaa; font-size: 12px; font-weight: 700; }
+  .keys { grid-column: 1 / -1; position: relative; height: 150px; }
+  .key { position: absolute; top: 0; border: 1px solid #222; border-radius: 0 0 5px 5px; cursor: pointer; }
+  .key.w { background: #eee; height: 150px; z-index: 1; } .key.b { background: #111; height: 92px; z-index: 2; }
+  .key.down.w { background: #ffb3d6; } .key.down.b { background: #ff2e88; }
+  #start { position: fixed; inset: 0; background: #000c; display: flex; align-items: center; justify-content: center;
+           font-size: 22px; cursor: pointer; z-index: 10; color: #fff; }
+  .help { width: 1120px; max-width: 100%; margin: 0 auto 30px; color: var(--dim); }
+</style>
+</head>
+<body>
+<header><h1>MAKKURO37</h1><span>simulator · the firmware's engine and screen in the browser · KNOB BANK held = HELP</span>
+  <span id="status"></span></header>
+<div class="smk">
+  <canvas id="screen" width="240" height="240"></canvas>
+  <div class="right">
+    <div class="knobs" id="knobs"></div>
+    <div class="buttons" id="buttons"></div>
+  </div>
+  <div class="row2">
+    <div class="wheels">
+      <div><input class="vslider" id="pitch" type="range" min="450" max="630" value="540"><div class="lab">PITCH</div></div>
+      <div><input class="vslider" id="mod" type="range" min="0" max="130" value="0"><div class="lab">MOD</div></div>
+    </div>
+    <div class="pads" id="pads"></div>
+    <div class="faders" id="faders"></div>
+  </div>
+  <div class="keys" id="keys"></div>
+</div>
+<div class="help">Mouse: pads (shift = soft hit), keys, knobs (drag up / down or scroll), buttons, wheels, faders.
+  Computer keyboard: 1–8 = top pads, A W S E D F T G Y H U J K = keys, Z / X = octave. A MIDI keyboard plays voices 4 + 5.</div>
+<div id="start">click to start the sound</div>
+<script>
+const $ = (id) => document.getElementById(id);
+let node = null;
+const send = (m) => node && node.port.postMessage(m);
+
+// ---- the screen
+const ctx = $("screen").getContext("2d"), img = ctx.createImageData(240, 240);
+function drawFb(fb) {
+  const d = img.data;
+  for (let i = 0; i < 240 * 240; i++) {
+    const c = fb[i];
+    d[4 * i] = ((c >> 11) & 31) * 255 / 31; d[4 * i + 1] = ((c >> 5) & 63) * 255 / 63; d[4 * i + 2] = (c & 31) * 255 / 31; d[4 * i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+// ---- knobs K1..K8 (HAL encoders 0..7)
+const KN = [["K1", "MASTER"], ["K2", "PAGE"], ["K3", "VOICE"], ["K4", "TUNING"], ["K5", ""], ["K6", ""], ["K7", ""], ["K8", ""]];
+const KC = ["#888", "#888", "#888", "#888", "#287cff", "#1ecc70", "#ffc618", "#ff621a"];
+KN.forEach(([n, f], e) => {
+  const k = document.createElement("div");
+  k.className = "knob";
+  k.innerHTML = `<div class="dial" style="--c:${KC[e]}"></div><b>${n}</b><small>${f}</small>`;
+  let ang = 0, y0 = null, acc = 0;
+  const turn = (s) => { if (!s) return; ang += s * 12; k.firstChild.style.setProperty("--a", ang + "deg"); send({ type: "enc", e, steps: s }); };
+  k.addEventListener("pointerdown", (ev) => { y0 = ev.clientY; acc = 0; k.setPointerCapture(ev.pointerId); });
+  k.addEventListener("pointermove", (ev) => { if (y0 === null) return; acc += y0 - ev.clientY; y0 = ev.clientY;
+    const s = Math.trunc(acc / 8); if (s) { acc -= s * 8; turn(s); } });
+  k.addEventListener("pointerup", () => { y0 = null; });
+  k.addEventListener("wheel", (ev) => { ev.preventDefault(); turn(ev.deltaY < 0 ? 1 : -1); }, { passive: false });
+  $("knobs").appendChild(k);
+});
+
+// ---- buttons (HAL ids) with what they do here
+const BTN = [["KNOB BANK", "FILTER / HELP"], ["FADER BANK", "faders A-D"], ["<", "voice"], [">", "voice"],
+  ["OCTAVE-", "keys"], ["OCTAVE+", "keys"], ["ARP", "VOICE · CHAOS"], ["NOTE REPEAT", "MUTE/MOD"], ["SCALE", "TUNING"],
+  ["CHORD", "ENV · HOLD ALL"], ["GLOBE", "MIX"], ["BT", "NOISE 3/8"], ["PATCH", "SCENES · setup"], ["PARA", "VCO 4/5"],
+  ["FX", "FX"], ["SEQ", "SEQ"], ["SEQ PLAY", "run"], ["SEQ REC", "LFO"]];
+const ORDER = [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 8, 17, 15, 16, 14, 11, 13, 12];
+const btnEl = [];
+ORDER.forEach((b) => {
+  const el = document.createElement("div");
+  el.className = "btn";
+  el.innerHTML = `${BTN[b][0]}<small>${BTN[b][1]}</small>`;
+  el.addEventListener("pointerdown", (ev) => { el.setPointerCapture(ev.pointerId); send({ type: "button", b, down: 1 }); });
+  el.addEventListener("pointerup", () => send({ type: "button", b, down: 0 }));
+  btnEl[b] = el;
+  $("buttons").appendChild(el);
+});
+
+// ---- pads: hardware 0..7 top row, 8..15 bottom row
+const padEl = [];
+for (let p = 0; p < 16; p++) {
+  const el = document.createElement("div");
+  el.className = "pad";
+  el.innerHTML = `<i>${p < 8 ? p + 1 : ["1", "2", "3", "4", "5", "P", "L", "R"][p - 8]}</i>`;
+  el.addEventListener("pointerdown", (ev) => { el.setPointerCapture(ev.pointerId); send({ type: "pad", pad: p, vel: ev.shiftKey ? 40 : 110 }); });
+  el.addEventListener("pointerup", () => send({ type: "pad", pad: p, vel: 0 }));
+  padEl[p] = el;
+  $("pads").appendChild(el);
+}
+
+// ---- faders
+for (let i = 0; i < 4; i++) {
+  const d = document.createElement("div");
+  d.innerHTML = `<input class="vslider" type="range" min="0" max="127" value="96"><div class="lab">F${i + 1}</div>`;
+  d.firstChild.addEventListener("input", (ev) => send({ type: "fader", i, v: +ev.target.value }));
+  $("faders").appendChild(d);
+}
+
+// ---- wheels: pitch springs back; mod up = more (raw 615 down .. 485 up)
+$("pitch").addEventListener("input", (ev) => send({ type: "wheel", i: 0, raw: +ev.target.value }));
+$("pitch").addEventListener("pointerup", (ev) => { ev.target.value = 540; send({ type: "wheel", i: 0, raw: 540 }); });
+$("mod").addEventListener("input", (ev) => send({ type: "wheel", i: 1, raw: 615 - +ev.target.value }));
+
+// ---- keys: 37, C..C
+const keyEl = [], WHITE = [0, 2, 4, 5, 7, 9, 11];
+let wx = 0;
+for (let k = 0; k < 37; k++) {
+  const s = k % 12, white = WHITE.includes(s), el = document.createElement("div");
+  el.className = "key " + (white ? "w" : "b");
+  const ww = 1088 / 22;
+  if (white) { el.style.left = wx * ww + "px"; el.style.width = ww + "px"; wx++; }
+  else { el.style.left = wx * ww - ww * 0.32 + "px"; el.style.width = ww * 0.64 + "px"; }
+  el.addEventListener("pointerdown", (ev) => { el.setPointerCapture(ev.pointerId); keyDown(k, 1); });
+  el.addEventListener("pointerup", () => keyDown(k, 0));
+  keyEl[k] = el;
+  $("keys").appendChild(el);
+}
+function keyDown(k, d) { keyEl[k].classList.toggle("down", !!d); send({ type: "key", key: k, down: d }); }
+const KB = "awsedftgyhujk", held = {};
+let kbo = 12;
+addEventListener("keydown", (ev) => {
+  if (ev.repeat || ev.ctrlKey || ev.metaKey) return;
+  const c = ev.key.toLowerCase(), i = KB.indexOf(c);
+  if (i >= 0 && kbo + i < 37) { held[c] = kbo + i; keyDown(kbo + i, 1); }
+  else if (c === "z") kbo = Math.max(0, kbo - 12);
+  else if (c === "x") kbo = Math.min(24, kbo + 12);
+  else if (c >= "1" && c <= "8") { held[c] = -1; send({ type: "pad", pad: +c - 1, vel: 110 }); }
+});
+addEventListener("keyup", (ev) => {
+  const c = ev.key.toLowerCase();
+  if (held[c] === undefined) return;
+  if (held[c] >= 0) keyDown(held[c], 0); else send({ type: "pad", pad: +c - 1, vel: 0 });
+  delete held[c];
+});
+
+// ---- the device's frames
+function frame(m) {
+  if (m.fb) drawFb(m.fb);
+  if (m.pads) m.pads.forEach((c, p) => {
+    let r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+    const k = Math.min(5, 255 / Math.max(1, r, g, b));          // LEDs are dim: shown brighter here
+    r = Math.round(r * k); g = Math.round(g * k); b = Math.round(b * k);
+    const lit = Math.max(r, g, b) > 40;
+    padEl[p].style.background = lit ? `rgb(${r},${g},${b})` : "#1d1a24";
+    padEl[p].style.boxShadow = lit ? `0 0 14px rgb(${r},${g},${b})` : "none";
+  });
+  if (m.leds !== undefined) btnEl.forEach((el, b) => el && el.classList.toggle("lit", !!((m.leds >> b) & 1)));
+}
+
+$("start").addEventListener("click", async () => {
+  $("start").textContent = "loading…";
+  try {
+    const ac = new AudioContext({ sampleRate: 44100, latencyHint: "interactive" });
+    await ac.audioWorklet.addModule("worklet.js");
+    node = new AudioWorkletNode(ac, "makkuro", { numberOfInputs: 0, outputChannelCount: [2] });
+    node.connect(ac.destination);
+    node.port.onmessage = (e) => {
+      const m = e.data;
+      if (m.type === "frame") frame(m);
+      else if (m.type === "ready") {
+        $("start").remove();
+        $("status").textContent = "running · " + ac.sampleRate + " Hz";
+        if (/demo/.test(location.search))             // (a test: three drones on, one held)
+          [0, 2, 5].forEach((p, i) => setTimeout(() => { send({ type: "pad", pad: p, vel: 110 });
+            setTimeout(() => send({ type: "pad", pad: p, vel: 0 }), 80); }, 300 + i * 400));
+      }
+      else if (m.type === "error") $("start").textContent = "error: " + m.message;
+    };
+    const wasm = await (await fetch("sim.wasm")).arrayBuffer();
+    node.port.postMessage({ type: "load", wasm }, [wasm]);
+    await ac.resume();
+    if (navigator.requestMIDIAccess) navigator.requestMIDIAccess().then((ma) => {
+      for (const i of ma.inputs.values()) i.onmidimessage = (ev) => send({ type: "midi", d: Array.from(ev.data) });
+    }).catch(() => {});
+  } catch (err) { $("start").textContent = "error: " + err.message; }
+});
+if (/auto/.test(location.search)) $("start").click();   // (tests: no click needed)
+</script>
+</body>
+</html>
