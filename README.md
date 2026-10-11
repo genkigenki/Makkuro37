@@ -40,4 +40,4 @@ Sound after Melodee by Kerem Kilic (ladder, tanh knee, limiter, spring reverb; G
 Board layer from SLOOP by isod89, based on Felucca by Leo Kuroshita.
 Plate after J. Dattorro, "Effect Design 1" (1997). Terminus font (SIL OFL 1.1).
 
-By M. Geisler (makkuro). Licence: GPL-3.0 (see [LICENSE](LICENSE)).
+@genkigenki, licence: GPL-3.0 (see [LICENSE](LICENSE)).
