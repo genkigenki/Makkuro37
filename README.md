@@ -7,11 +7,14 @@ Eight drones in eight columns, each a little soot creature on the screen. 96 pre
 your own. One logic for every menu: a button opens it, K1-K8 set the eight columns, < > turn the pages.
 Unofficial firmware, not affiliated with or endorsed by M-Vave. Install at your own risk.
 
-[Guide](docs/GUIDE.md) · [Control map](docs/CONTROLS.md) · [Web installer](#install) · [Simulator](web/sim/)
+[Guide](docs/GUIDE.md) · [Control map](docs/CONTROLS.md) · [Web installer](https://genkigenki.github.io/smk37/) · [Simulator](https://genkigenki.github.io/smk37/makkuro37-sim/)
 
 ## Install
 
-- **Browser:** web installer (link to follow).
+- **Browser:** open the [web installer](https://genkigenki.github.io/smk37/) in Chrome or Edge, press Connect, then
+  Install on Makkuro37.
+- **Try it first:** the [simulator](https://genkigenki.github.io/smk37/makkuro37-sim/) runs the firmware's engine and
+  screen in the browser.
 - **Python:** connect the SMK-37 Pro by USB, then
 
   ```
