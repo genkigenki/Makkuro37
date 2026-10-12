@@ -33,4 +33,9 @@ for t in "storage_test" "smk_flash_test" "owner_test" "recovery_test" "ota_test 
     $CC -w -DBOARD_SMK37=1 -Ifirmware/hal -Ifirmware/src -Ibuild/gen -o "$OUT/$1" "tests/$1.c" &&
         "$OUT/$1" $2 $3 >"$OUT/$1.log" 2>&1 && echo "  ok   $1" || { echo "  FAIL $1 (build/host/$1.log)"; fail=1; }
 done
+for m in 1 2; do                         # ota.c of the MODEL=elite / mke builds: their identity and update record
+    $CC -w -DBOARD_SMK37=1 -DT_MODEL=$m -Ifirmware/hal -Ifirmware/src -Ibuild/gen -o "$OUT/ota_test_m$m" tests/ota_test.c &&
+        "$OUT/ota_test_m$m" $PKG >"$OUT/ota_test_m$m.log" 2>&1 && echo "  ok   ota_test (model $m)" ||
+        { echo "  FAIL ota_test model $m (build/host/ota_test_m$m.log)"; fail=1; }
+done
 [ $fail = 0 ] && echo "all tests passed" || { echo "TESTS FAILED"; exit 1; }

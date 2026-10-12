@@ -101,7 +101,7 @@ static int st_prog(uint32_t off, const void *src, uint32_t n)
 #include "scenes.c"
 
 static uint8_t recovery_active;
-#define OTA_IDENTITY (recovery_active ? "SMK-37 Pro_000" : FELUCCA_ID)
+#define OTA_IDENTITY (recovery_active ? SMK_MODEL "_000" : FELUCCA_ID)
 #include "ota.c"
 static void recovery_poll(void);
 static uint32_t ota_now_ms(void) { return fm1_ms; }

@@ -3,7 +3,8 @@
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
 # Makkuro37: Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com>
 # Build Makkuro37 (M-Vave SMK-37 Pro -> build/makkuro37.fwsc), Linux / WSL.
-#   ./build.sh [--release X.Y]
+#   ./build.sh [--release X.Y] [--model pro|elite|mke]
+#   MODEL            pro (default), elite or mke: the model name the keyboard reports
 #   JIELI_TOOLCHAIN  JieLi Linux toolchain (default: ~/.jieli/toolchain)
 #   AC79_SDK         JieLi AC79 SDK checkout (default: ~/fw-AC79_AIoT_SDK)
 set -e

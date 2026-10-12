@@ -4,12 +4,15 @@
 # Makkuro37: Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com>
 """Build Makkuro37: the app, the update loader and an installable .fwsc package.
 
-  tools/build.py [--release X.Y]
+  tools/build.py [--release X.Y] [--model pro|elite|mke]
 
 Outputs in build/: makkuro37.bin (app), loader/ota.bin (update loader), makkuro37.fwsc (package).
 
 M-Vave SMK-37 Pro only: -DBOARD_SMK37=1, identity SMK-37 Pro_700 (release SMK-37 Pro_7XY), the SMK flash
 layout and app slot (fm1pkg_make.py).
+MODEL=elite / mke (or --model): the same build under the SMK-37 Elite's or the MKE-P37's model name
+(identity SMK-37 Elite_700 / MKE-P37_700, the loader's and the update record's name too; -DSMK_MODEL),
+so M-Vave's updater still takes that unit's factory package; build/makkuro37-elite.fwsc, -mke.fwsc.
 
 The JieLi toolchain is Linux x86-64 only. JIELI_TOOLCHAIN points at it; on
 macOS (or with JIELI_DOCKER=1) each tool runs in a linux/amd64 container.
@@ -53,6 +56,8 @@ PRODUCT = "SMK-37 Pro_700"          # package identity; release builds are SMK-3
 BOARD = "smk37"
 BOARD_PREFIX = {"smk37": "SMK-37 Pro_7"}
 BOARD_DEFS = {"smk37": ["-DBOARD_SMK37=1"]}
+# smk37: the keyboard's model name (MODEL env or --model); one hardware, three names. pro adds no flag
+MODELS = {"pro": "SMK-37 Pro", "elite": "SMK-37 Elite", "mke": "MKE-P37"}
 VERSION = None                      # MK_VERSION for release builds (default: firmware/src/makkuro.c)
 
 
@@ -304,12 +309,22 @@ def main():
     global PRODUCT, VERSION, BOARD, APP_SLOT
     ap = argparse.ArgumentParser()
     ap.add_argument("--release", metavar="X.Y", help="release build: identity SMK-37 Pro_7XY, version string X.Y")
+    ap.add_argument("--model", choices=sorted(MODELS), default=None,
+                    help="the model name, pro (default), elite or mke (default: $MODEL, else pro)")
     ap.add_argument("--sdk", type=Path, help="JieLi AC79 SDK checkout (default: $AC79_SDK)")
     a = ap.parse_args()
+    model = (a.model or os.environ.get("MODEL") or "pro").lower()
+    if model not in MODELS:
+        raise SystemExit(f"MODEL={model}: pro, elite or mke")
     fm1pkg_make.set_board(BOARD)
     APP_SLOT = fm1pkg_make.APP_SLOT
     stem = "makkuro37"
     PRODUCT = fm1pkg_make.BOARDS[BOARD][2]
+    if model != "pro":              # another model name: identity, loader and update record (fm1_cc.h SMK_MODEL)
+        BOARD_DEFS[BOARD] = [*BOARD_DEFS[BOARD], f'-DSMK_MODEL="{MODELS[model]}"']
+        PRODUCT = PRODUCT.replace(MODELS["pro"], MODELS[model])
+        BOARD_PREFIX[BOARD] = BOARD_PREFIX[BOARD].replace(MODELS["pro"], MODELS[model])
+        stem += "-" + model
     name = f"{stem}.fwsc"
     if a.release:                   # one digit each: the identity has room for two
         m = re.fullmatch(r"(\d)\.(\d)(-[A-Za-z0-9]+)?", a.release)
