@@ -2,7 +2,7 @@
 
 ![Makkuro37](docs/img/hero.png)
 
-**A microtonal drone synth for the M-Vave SMK-37 Pro.**
+**A microtonal drone synth for the M-Vave SMK-37 (SMK-37 Pro, Elite or MKE-P37).**
 Eight drones in eight columns, each a little soot creature on the screen. 96 presets in six themes, 16 places for
 your own. One logic for every menu: a button opens it, K1-K8 set the eight columns, < > turn the pages.
 Unofficial firmware, not affiliated with or endorsed by M-Vave. Install at your own risk.
@@ -15,7 +15,7 @@ Unofficial firmware, not affiliated with or endorsed by M-Vave. Install at your 
   Install on Makkuro37.
 - **Try it first:** the [simulator](https://genkigenki.github.io/smk37/makkuro37-sim/) runs the firmware's engine and
   screen in the browser.
-- **Python:** connect the SMK-37 Pro by USB, then
+- **Python:** connect the SMK-37 by USB, then
 
   ```
   python tools/fm1_install.py --yes makkuro37.fwsc
