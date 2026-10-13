@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
+ * Copyright (C) 2026 M. Geisler (makkuro) */
 /* The filter (stereo: LADDER, POLIVOKS, BAND, DIST; driven, the band state clipped) and dual effector (one
  * "cartridge" per side: reverb, delay, shimmer, chorus, phaser, crush, ring, freeze; X Y Z each, BLEND). */
 

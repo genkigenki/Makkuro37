@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
-# Makkuro37: Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com>
+# Makkuro37: Copyright (C) 2026 M. Geisler (makkuro)
 # Build Makkuro37 (M-Vave SMK-37 Pro -> build/makkuro37.fwsc), Linux / WSL.
 #   ./build.sh [--release X.Y] [--model pro|elite|mke]
 #   MODEL            pro (default), elite or mke: the model name the keyboard reports

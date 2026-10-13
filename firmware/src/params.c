@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
+ * Copyright (C) 2026 M. Geisler (makkuro) */
 /* Parameter descriptors (range, default, how a value reads) and the power-on sound. */
 enum { F_NUM, F_ENUM, F_ONOFF, F_PAN, F_TUNE, F_CENTS, F_BITS, F_SIGNED };
 typedef struct {

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
-# Makkuro37: Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com>
+# Makkuro37: Copyright (C) 2026 M. Geisler (makkuro)
 """Build Makkuro37: the app, the update loader and an installable .fwsc package.
 
   tools/build.py [--release X.Y] [--model pro|elite|mke]

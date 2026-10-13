@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
+ * Copyright (C) 2026 M. Geisler (makkuro) */
 /* The keys play voices 4 + 5: SINGLE (both on the last key), DUO (the last
  * two keys: 4 the lower, 5 the upper), SPLIT (left half -> 4, right half -> 5); an arpeggiator (up, down, up-down,
  * random, the recorded 16-step key sequence) on its own clock or the PULSER, with LATCH and octaves; portamento

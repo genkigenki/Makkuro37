@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
-# Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com>
+# Copyright (C) 2026 M. Geisler (makkuro)
 # The guide's screenshots: every screen rendered on the host, 2x nearest, to docs/img/screen-*.png.
 #   sh tools/docs_img.sh        (after sh build.sh: needs build/gen)
 set -e

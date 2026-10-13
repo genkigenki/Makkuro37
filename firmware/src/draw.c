@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
+ * Copyright (C) 2026 M. Geisler (makkuro) */
 /* The screen, laid out as the panel: eight 30-pixel columns, column i under knob Ki and above pad column i, in
  * voice i's colour. Home: the eight soot creatures (they squish when woken, glow and sing while they sound,
  * sleep when silent). Menus: the eight values in the columns. Big letters; a turned knob shows its value big. */

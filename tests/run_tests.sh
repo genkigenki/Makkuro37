@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
-# Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com>
+# Copyright (C) 2026 M. Geisler (makkuro)
 # Host tests (no hardware), from the repo root:  tests/run_tests.sh [OUTDIR]
 #   host    the engine: renders to OUTDIR/*.wav, level / clip / DC checks, cost per block
 #   screen  the screen to OUTDIR/*.png

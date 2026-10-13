@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
- * Makkuro37: Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
+ * Makkuro37: Copyright (C) 2026 M. Geisler (makkuro) */
 /* Makkuro37, a microtonal drone synth for the M-Vave SMK-37 Pro: one compilation unit (the HAL is
  * header-only; board layer from SLOOP / Felucca). Order matters. */
 #include <stdint.h>

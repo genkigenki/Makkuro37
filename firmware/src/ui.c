@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
+ * Copyright (C) 2026 M. Geisler (makkuro) */
 /* Controls: one logic for everything. The screen is laid out as the panel, K1..K8 above the 8 pad columns, so
  * column i is voice i everywhere.
  *   HOME: Ki = voice i's pitch, top pad i its gate; bottom pads KB (keyboard), P (pulser), H (hold all), C (chaos).

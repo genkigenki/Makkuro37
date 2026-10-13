@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com>
+// Copyright (C) 2026 M. Geisler (makkuro)
 // Makkuro37 in an AudioWorklet: sim.wasm is the firmware's engine, UI and screen against a simulated SMK-37 Pro.
 // Each render quantum runs the device's clock; ~30 times a second the screen, the pads and the LEDs go out.
 class Makkuro extends AudioWorkletProcessor {

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-# Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com>
+# Copyright (C) 2026 M. Geisler (makkuro)
 """Fixed-point tables for Makkuro37 (no float on the target).  gen_tables.py OUT.h"""
 import math
 import sys

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
+ * Copyright (C) 2026 M. Geisler (makkuro) */
 /* Factory presets: six themes of 16 (a page of pads each): DRONES (dark textures), ABRAXAS (after the
  * Horn of Abraxas set), NATURE, SCI-FI, ORGAN, PULSE. Each the power-on sound with changes; AUTO: the voices it
  * wakes. Measured by tests/host.c (level, low-mids, highs, width, movement). */

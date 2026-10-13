@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
+ * Copyright (C) 2026 M. Geisler (makkuro) */
 /* Host render of the Makkuro37 engine (same sources as the firmware): scenes to WAV, level / clip / DC
  * checks, cost per block.   tests/host OUTDIR   (tests/run_tests.sh) */
 #include <stdio.h>

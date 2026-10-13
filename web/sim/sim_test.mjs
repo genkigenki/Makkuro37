@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com>
+// Copyright (C) 2026 M. Geisler (makkuro)
 // The simulator's wasm in Node, as the worklet runs it: boots, three pads wake three voices (audio, pad light,
 // screen), a knob changes a value; cost against real time; the screen to OUT.ppm.
 //   node web/sim/sim_test.mjs build/sim/sim.wasm [OUT.ppm]

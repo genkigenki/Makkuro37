@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
+ * Copyright (C) 2026 M. Geisler (makkuro) */
 /* The SMK store owner (storage.c st_owner_check) as Makkuro37 builds it: tag SMK37DATAMAKKURO at 0xAF000;
  * another firmware's store (or an untagged one) is cleared, ours is kept, nothing outside FL_DATA touched. */
 #include <stdint.h>

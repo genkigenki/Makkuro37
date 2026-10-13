@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
+ * Copyright (C) 2026 M. Geisler (makkuro) */
 /* Tuning sets: cents of each degree above the root. Sets of 12 map the keys as a piano (maqam Rast: E and B
  * a quarter tone flat); the others give every key the next degree. */
 typedef struct {

@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
-# Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com>
+# Copyright (C) 2026 M. Geisler (makkuro)
 # The guide's panel images: tools/panel.html in headless Chrome -> docs/img/panel-1..8.png, panel-map.png.
 #   CHROME=/path/to/chrome sh tools/docs_panels.sh
 set -e

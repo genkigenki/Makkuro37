@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
- * Makkuro37: Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
+ * Makkuro37: Copyright (C) 2026 M. Geisler (makkuro) */
 /* Serial console on the CDC-ACM function: diagnostics and test hooks (gates, parameters, user presets).
  * Runs in the main loop (cdc_task); usb_poll moves the bytes. The baud rate is ignored. Flash is
  * written only by `user save`; `uboot` does what the SysEx soft key does. */

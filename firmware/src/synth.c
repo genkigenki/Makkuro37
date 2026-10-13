@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
+ * Copyright (C) 2026 M. Geisler (makkuro) */
 /* The sound engine, fixed point. synth_block() renders CTL stereo samples (Q15 in int32, L R L R ...):
  * one control tick (envelopes, pitches, gains), then the voices into the bus, then the master. */
 static patch_t pt;                         /* the sound (scene) */

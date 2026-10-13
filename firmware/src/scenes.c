@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
+ * Copyright (C) 2026 M. Geisler (makkuro) */
 /* Settings and the 16 user presets (PRESETS, theme MINE) in the SMK data area (storage.c, owner SMK37DATAMAKKURO),
  * two presets per stored object. A record carries its parameter counts, so a later firmware with more parameters
  * still reads it; a scene of earlier versions (one per object) reads as the first of the pair. */

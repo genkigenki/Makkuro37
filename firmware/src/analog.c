@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Kerem Kilic (Melodee), Leo Kuroshita (@kurogedelic), Hügelton Instruments (Felucca)
- * Makkuro37: Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
+ * Makkuro37: Copyright (C) 2026 M. Geisler (makkuro) */
 /* The analog parts, after Melodee37's PROPHET engine and master (eng_prophet, fx.c): a tanh knee, the
  * four-pole TPT ladder (Curtis: saturating input; SSI: every stage saturates), the DC blocker with error
  * feedback, the peak limiter in front of the soft clipper. */

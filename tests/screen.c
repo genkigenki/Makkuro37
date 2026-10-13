@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
+ * Copyright (C) 2026 M. Geisler (makkuro) */
 /* Host render of the screen (the firmware's ui.c / draw.c on a 240 x 240 frame buffer) to PPM files.
  *   tests/screen OUTDIR        (tests/run_tests.sh converts them to PNG)
  *   tests/screen OUTDIR docs   every screen, named for docs/img (tools/docs_img.sh) */

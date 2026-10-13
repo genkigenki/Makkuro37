@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
-# Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com>
+# Copyright (C) 2026 M. Geisler (makkuro)
 # The Makkuro37 simulator: the firmware's sources to WebAssembly (Emscripten), plus the page.
 #   web/sim/build.sh  ->  build/sim/{index.html, worklet.js, sim.wasm}
 #   then: python3 -m http.server -d build/sim 8738, open http://localhost:8738

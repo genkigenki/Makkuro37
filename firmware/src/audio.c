@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
- * Makkuro37: Copyright (C) 2026 M. Geisler (makkuro) <mcgeisler@gmail.com> */
+ * Makkuro37: Copyright (C) 2026 M. Geisler (makkuro) */
 /* I2S output (ALNK0 -> external codec) and the audio ISR: each half buffer is rendered in blocks of
  * CTL samples by synth_block (synth.c), then scaled to 24-bit stereo. */
 /* registers: hal/fm1_audio.h */
