@@ -4,7 +4,7 @@
 /* Makkuro37, a microtonal drone synth for the M-Vave SMK-37 Pro: one compilation unit (the HAL is
  * header-only; board layer from SLOOP / Felucca). Order matters. */
 #include <stdint.h>
-#define MK_VERSION "0.1"
+#define MK_VERSION "0.2"
 #define BRAND_NAME "MAKKURO37"
 #define BRAND_CRASH "MAKKURO37 CRASH"
 #define BRAND_RESCUE "MAKKURO37 USB RESCUE"

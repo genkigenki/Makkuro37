@@ -23,8 +23,10 @@ The full map: [CONTROLS.md](CONTROLS.md).
 2. Tap any **pad**. You hear that preset straight away. The pad you are hearing is white.
 3. Turn **K1-K4**: each is a filter type (LADDER, POLIVOKS, BAND, DIST). Turning one switches to it and sweeps
    its cutoff. **K5-K8**: resonance, drive, movement and its rate.
-4. Press **<** or **>** to change the theme: DRONES, ABRAXAS, NATURE, SCI-FI, ORGAN, PULSE, MINE.
-5. Press **PATCH**. You see the creatures. The awake ones are singing.
+4. Press **<** or **>** to change the theme: DRONES, ABRAXAS, NATURE, SCI-FI, ORGAN, PULSE, MINE. The strip
+   under the pads shows all seven, the one you are in white.
+5. Press **PATCH**. You see the creatures. The awake ones are bright and singing, the sleeping ones dim. The
+   first time, the screen says TAP A TOP PAD: WAKE / SLEEP until you tap one.
 6. Press **KNOB BANK** to come back to the presets.
 
 ## 2. Tuning the creatures
@@ -35,7 +37,8 @@ The full map: [CONTROLS.md](CONTROLS.md).
 
 1. On the creatures screen, each column is one drone: knob above, creature and note in the middle, pad below.
 2. Tap **top pad 3**. Creature 3 wakes up and sings.
-3. Tap it again. It falls asleep (it fades out with its release). Tap once more right away: silent at once.
+3. Tap it again. It falls asleep (it fades out with its release) and turns dim, its note too. Tap once more
+   right away: silent at once.
 4. **Hold** top pad 3 instead. It sings only while you hold it.
 5. Turn **K1**. Drone 1 moves up or down the scale. The note under creature 1 changes.
 6. Hold **top pad 1** and play a **key**. Drone 1 takes that note, in its own register, and stays on.
@@ -142,8 +145,9 @@ you move it; switching banks changes nothing.
 3. **Hold** a dark pad for one second. Your sound is saved there.
 4. Hold a lit pad: the screen asks first. **Green** pad (bottom right) = replace, **red** = cancel.
 5. Tap a lit pad to load your sound.
-6. Hold **PATCH** for SETUP: pad light, USB console, output LINE or SPEAKER. Master volume, width, tape and
-   analog drift are on the faders, bank OUTPUT.
+6. Hold **PATCH** for SETUP: pad light, USB console, output LINE or SPEAKER, and START: PLAY (a preset's
+   voices start as it has them) or SILENT (every preset loads asleep, you wake the voices with their pads).
+   Master volume, width, tape and analog drift are on the faders, bank OUTPUT.
 
 ---
 

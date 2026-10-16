@@ -65,7 +65,7 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 /* scenes.c stand-ins: user presets 1 and 3 stored */
 #define NUSER 16u
 static uint16_t user_used = 5;
-static struct { uint8_t bright, console, rsv0, user, speaker; } settings = {4, 1, 0, 0, 0};
+static struct { uint8_t bright, console, start, user, speaker, hinted; } settings = {4, 1, 0, 0, 0, 0};
 static int user_save(uint32_t n) { user_used |= (uint16_t)(1u << n); return 0; }
 static int user_load_to(uint32_t n, patch_t *d) { (void)n; patch_init(d); return 0; }
 static void fm1_wdt_feed(void) {}
@@ -182,6 +182,9 @@ static void docs(const char *dir)                       /* every screen, for the
     preset_load(1);
     ui.menu = MN_HOME;
     run(2500);
+    shot(dir, "home-hint");                            /* the first run: until a top pad is tapped */
+    settings.hinted = 1;
+    run(200);
     shot(dir, "home");
     pitch_turn(2, 3);
     run(100);
@@ -271,6 +274,9 @@ int main(int argc, char **argv)
     preset_load(1);
     ui.menu = MN_HOME;
     run(2500);
+    shot(dir, "s02a_home_hint");
+    settings.hinted = 1;
+    run(200);
     shot(dir, "s02_home");
     pitch_turn(2, 3);
     run(100);
@@ -308,6 +314,33 @@ int main(int argc, char **argv)
         draw_frame();
         snprintf(n, sizeof n, "s2%u_help", t);
         shot(dir, n);
+    }
+    ui.help = 0;
+    {   /* START SILENT: a preset's voices wait for their pads; PLAY: as the preset has it. The first top pad tap
+         * on HOME ends the hint and stores the settings 1.5 s later */
+        uint32_t v, on = 0;
+        int bad = 0;
+        settings.start = 1;
+        preset_load(1);
+        for (v = 0; v < NV; v++)
+            on |= ui.latched[v] | ui.pad_gate[v];
+        bad |= on != 0u;
+        settings.start = 0;
+        preset_load(1);
+        for (on = 0, v = 0; v < NV; v++)
+            on |= ui.latched[v];
+        bad |= on == 0u;
+        settings.hinted = 0;
+        ui.menu = MN_HOME;
+        home_pad(2, 100);
+        home_pad(2, 0);
+        bad |= settings.hinted != 1u || !ui.hint_save_t;
+        run(1600);
+        bad |= ui.hint_save_t != 0u;
+        if (bad) {
+            fprintf(stderr, "FAIL screen: START / the HOME hint\n");
+            return 1;
+        }
     }
     return 0;
 }

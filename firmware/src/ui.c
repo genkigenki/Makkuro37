@@ -21,7 +21,7 @@ enum { B_KNOBBANK, B_FADERBANK, B_LEFT, B_RIGHT, B_OCTDN, B_OCTUP, B_ARP, B_REPE
 /* ------------------------------------------------------------- the table --- */
 #define NO 0xFFu
 enum { PG_ROW, PG_GLOB, PG_VOICE };                    /* a row of one voice parameter / 8 globals / one voice */
-enum { X_LIGHT = 0xE0, X_CONSOLE, X_OUTPUT, X_LOOP, X_STEPREC };   /* (PG_GLOB: settings and pad actions) */
+enum { X_LIGHT = 0xE0, X_CONSOLE, X_OUTPUT, X_LOOP, X_STEPREC, X_START };   /* (PG_GLOB: settings and pad actions) */
 typedef struct {
     const char *name;
     uint8_t kind;
@@ -76,8 +76,8 @@ static const page_t PAGES[] = {
     ROW3("PAN", VP_PAN, "EACH VOICE LEFT OR RIGHT"),
     ROW3("TONE", VP_TONE, "EACH VOICE DARK OR BRIGHT"),
     /* SETUP (PATCH held): the device, not the sound */
-    {"SETUP", PG_GLOB, {X_LIGHT, X_CONSOLE, X_OUTPUT, NO, NO, NO, NO, NO}, NO, NO,
-     "PAD LIGHT, USB CONSOLE,\nOUTPUT: LINE OR SPEAKER"},
+    {"SETUP", PG_GLOB, {X_LIGHT, X_CONSOLE, X_OUTPUT, X_START, NO, NO, NO, NO}, NO, NO,
+     "PAD LIGHT, USB CONSOLE, OUTPUT\nSTART: PRESETS PLAY OR SILENT"},
     {"JOYSTICK", PG_GLOB, {G_JXOFS, G_JYOFS, NO, NO, NO, NO, NO, NO}, NO, NO,
      "THE WHEELS' CENTRE: TRIM IF\nPITCH OR MOD DRIFTS"},
 };
@@ -148,6 +148,7 @@ static struct {
     struct { uint8_t mask, n; uint32_t t, until; int32_t hist[NV][3]; } cz;   /* CHAOS: 3 rolls, 170 ms apart */
     uint8_t save_pad;                      /* MINE: the pad held (+1), since save_t */
     uint32_t save_t;
+    uint32_t hint_save_t;                  /* the HOME hint seen: the settings stored 1.5 s after (ms | 1), 0 = none */
     uint8_t altmask;                       /* columns whose knob edits their second parameter (DETUNE: RATE) */
     uint8_t free, hold;                    /* FREE-PLAY: the keys wake the drones (SEQ PLAY); HOLD (SEQ REC) */
     int8_t fkey[NV];                       /* FREE-PLAY: the key each voice plays (-128: none) */
@@ -245,9 +246,10 @@ static const pdesc_t *it_desc(const item_t *it)
 {
     static const char *const N_OUT[2] = {"LINE", "SPEAKER"};
     static const char *const N_LOOP[2] = {"REC", "STOP"};
-    static const pdesc_t X[5] = {{"LIGHT", 1, 8, 4, F_NUM, 0}, {"CONSOLE", 0, 1, 1, F_ONOFF, 0},
+    static const char *const N_START[2] = {"PLAY", "SILENT"};
+    static const pdesc_t X[6] = {{"LIGHT", 1, 8, 4, F_NUM, 0}, {"CONSOLE", 0, 1, 1, F_ONOFF, 0},
                                  {"OUTPUT", 0, 1, 0, F_ENUM, N_OUT}, {"LOOP", 0, 1, 0, F_ENUM, N_LOOP},
-                                 {"STEP REC", 0, 1, 0, F_ENUM, N_LOOP}};
+                                 {"STEP REC", 0, 1, 0, F_ENUM, N_LOOP}, {"START", 0, 1, 0, F_ENUM, N_START}};
     switch (it->kind) {
     case IK_V: return &VDESC[VTYPE[it->voice]][it->id];
     case IK_G: return &GDESC[it->id];
@@ -266,6 +268,7 @@ static int32_t it_get(const item_t *it)
         case X_LIGHT: return settings.bright;
         case X_CONSOLE: return settings.console;
         case X_OUTPUT: return settings.speaker;
+        case X_START: return settings.start;
         case X_LOOP: return ui.mo.state == MO_REC || ui.mo.state == MO_LOOP ? 0 : 1;
         default: return kb.rec ? 0 : 1;
         }
@@ -378,6 +381,8 @@ static void it_set(const item_t *it, int32_t v)          /* a new value (clamped
         settings.console = (uint8_t)v;
     else if (it->id == X_OUTPUT)
         settings.speaker = (uint8_t)v;
+    else if (it->id == X_START)
+        settings.start = (uint8_t)v;
     ui.dirty = 1;
 }
 
@@ -451,7 +456,8 @@ static void autogate(void)                              /* a preset's voices sta
 {
     uint32_t v, bits = (uint32_t)pt.g[G_AUTOGATE];
     for (v = 0; v < NV; v++) {                          /* (a voice with its own gate source: on, it plays it) */
-        uint32_t on = VTYPE[v] != VT_VCO && (((bits >> v) & 1u) || pt.v[v][VP_GSRC] != GS_PAD);
+        uint32_t on = !settings.start && VTYPE[v] != VT_VCO &&   /* (START SILENT: all wait for their pads) */
+                      (((bits >> v) & 1u) || pt.v[v][VP_GSRC] != GS_PAD);
         ui.latched[v] = ui.pad_gate[v] = (uint8_t)on;
         ui.ignore_rel[v] = ui.hush[v] = 0;
     }
@@ -760,6 +766,11 @@ static void home_pad(uint32_t pad, uint32_t vel)
         } else if (vel) {
             gate_vel[pad] = (uint8_t)vel;
             gate_press(pad);
+            if (!settings.hinted) {                     /* the first tap: the HOME hint goes (stored soon) */
+                settings.hinted = 1;
+                ui.hint_save_t = fm1_ms | 1u;
+                ui.dirty = 1;
+            }
         } else
             gate_release(pad);
     } else if (pad == 8u) {                             /* KB: select voices, then the keys tune them */
@@ -1221,6 +1232,10 @@ static void ui_input(void)
     knobs_poll();
     faders_poll();
     picker_tick();
+    if (ui.hint_save_t && fm1_ms - ui.hint_save_t >= 1500u) {   /* (once: after the first top pad tap) */
+        ui.hint_save_t = 0;
+        settings_save();
+    }
     chaos_tick();
     mo_play();
     speaker = settings.speaker;
