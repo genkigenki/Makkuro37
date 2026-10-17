@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/img/banner.png" width="100%" alt="Makkuro37: a microtonal drone synth for the SMK-37, eight soot creatures on the screen"></p>
+
 # Makkuro37
 
 ![Makkuro37](docs/img/hero.png)
