@@ -175,18 +175,25 @@ EXPORT uint32_t *sim_pads(void) { return pad_rgb; }
 EXPORT uint32_t sim_leds(void) { return btn_leds; }
 EXPORT uint32_t sim_ui(void) { return (uint32_t)ui.menu << 16 | (uint32_t)ui.page << 8 | ui.preset; }   /* (tests) */
 EXPORT uint32_t sim_user_used(void) { return user_used; }
+EXPORT uint32_t sim_lowkeys(void) { return settings.lowkeys; }   /* (the page: the key picker's keys) */
+EXPORT uint32_t sim_key_state(void)              /* (tests) the root, the key before, the glide 0..256 */
+{
+    return (uint32_t)pt.g[G_ROOT] | (uint32_t)ui.key_from << 8 | (uint32_t)(kg.prog > 256u ? 256u : kg.prog) << 16;
+}
+EXPORT int32_t sim_vparam(uint32_t v, uint32_t id) { return v < NV && id < VP_N ? pt.v[v][id] : 0; }   /* (tests) */
 EXPORT uint32_t sim_cpu_peak(void) { return (uint32_t)syn.peak; }
 EXPORT void sim_pad(uint32_t pad, uint32_t vel)  /* vel 0 = release */
 {
     if (pad < 16u)
         padq[padq_w++ % PADQ] = (uint16_t)(pad << 8 | (vel > 127u ? 127u : vel));
 }
-EXPORT void sim_key(uint32_t k, uint32_t down)   /* keybed key 0..36 */
+EXPORT void sim_key(uint32_t k, uint32_t down)   /* keybed key 0..36; down: 0 = release, 1 = 100, 2..127 its velocity */
 {
     if (k >= 37u) return;
-    if (down)
+    if (down) {
+        fm1_in.key_vel[k] = (uint8_t)(down > 127u ? 127u : down > 1u ? down : 100u);
         fm1_in.keys |= (uint64_t)1u << k;
-    else
+    } else
         fm1_in.keys &= ~((uint64_t)1u << k);
 }
 EXPORT void sim_button(uint32_t b, uint32_t down)

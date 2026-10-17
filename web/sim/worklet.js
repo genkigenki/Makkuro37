@@ -32,7 +32,7 @@ class Makkuro extends AudioWorkletProcessor {
     const ex = this.ex;
     if (!ex) return;
     if (m.type === "pad") ex.sim_pad(m.pad, m.vel);
-    else if (m.type === "key") ex.sim_key(m.key, m.down ? 1 : 0);
+    else if (m.type === "key") ex.sim_key(m.key, m.down ? Math.min(127, Math.max(1, m.vel | 0 || 100)) : 0);
     else if (m.type === "button") ex.sim_button(m.b, m.down ? 1 : 0);
     else if (m.type === "enc") ex.sim_enc(m.e, m.steps | 0);
     else if (m.type === "fader") ex.sim_fader(m.i, m.v);
@@ -49,6 +49,7 @@ class Makkuro extends AudioWorkletProcessor {
     }
     msg.pads = Array.from(new Uint32Array(mem, ex.sim_pads(), 16));
     msg.leds = ex.sim_leds();
+    if (ex.sim_lowkeys) msg.lowkeys = ex.sim_lowkeys();
     this.port.postMessage(msg, tr);
   }
   process(inputs, outputs) {

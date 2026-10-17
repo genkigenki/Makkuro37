@@ -70,6 +70,9 @@
            box-shadow: 0 0 6px #ff3cd277; }
   .key.down.w { background: #3cf0ff; box-shadow: 0 0 18px var(--cy); }
   .key.down.b { background: var(--mg); box-shadow: 0 0 18px var(--mg); }
+  .key.lk.w { border-color: #ffe61e; box-shadow: inset 0 0 8px #ffe61e44; }   /* LOWKEY: the key picker */
+  .key.lk.b { border-color: #ffe61e; }
+  .key.lk.down { background: #ffe61e; box-shadow: 0 0 18px #ffe61e; }
   @media (max-width: 700px) { .keys { height: 120px; } .mid { grid-template-columns: repeat(8, minmax(38px, 1fr)); }
     .knob .dial { width: 34px; height: 34px; } .knob .dial::after { height: 11px; transform-origin: 50% 14px; }
     .pad { height: 40px; margin: 0 2px; } .grid6 { grid-template-columns: repeat(6, minmax(48px, 1fr)); }
@@ -95,9 +98,9 @@
   <div class="keys" id="keys"></div>
 </div>
 <div class="help">Laid out like the SMK-37 Pro: wheels, the screen with its six buttons, K1..K8 over the 16 pads, the faders
-  over the 2 x 6 buttons, the keys below. Mouse or touch: pads (shift = soft hit), keys, knobs (drag up / down or scroll),
+  over the 2 x 6 buttons, the keys below. Mouse or touch: pads and keys (shift = soft hit), knobs (drag up / down or scroll),
   buttons, wheels, faders. Computer keyboard: 1–8 = top pads, A W S E D F T G Y H U J K = keys, Z / X = octave.
-  A MIDI keyboard plays the keys.</div>
+  A MIDI keyboard plays the keys. SETUP (PATCH held), page KEY: LOWKEY makes the lowest keys (yellow) pick the key of everything.</div>
 <div id="start">click to start the sound</div>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -193,12 +196,12 @@ for (let k = 0; k < 37; k++) {
   const white = WHITE.includes(k % 12), el = mk("key " + (white ? "w" : "b"));
   if (white) wx++;
   else { el.style.left = (wx / 22 - 0.31 / 22) * 100 + "%"; el.style.width = 0.62 / 22 * 100 + "%"; }
-  el.addEventListener("pointerdown", (ev) => { el.setPointerCapture(ev.pointerId); keyDown(k, 1); });
+  el.addEventListener("pointerdown", (ev) => { el.setPointerCapture(ev.pointerId); keyDown(k, 1, ev.shiftKey ? 40 : 100); });
   el.addEventListener("pointerup", () => keyDown(k, 0));
   keyEl[k] = el;
   $("keys").appendChild(el);
 }
-function keyDown(k, d) { keyEl[k].classList.toggle("down", !!d); send({ type: "key", key: k, down: d }); }
+function keyDown(k, d, vel) { keyEl[k].classList.toggle("down", !!d); send({ type: "key", key: k, down: d, vel: vel || 100 }); }
 const KB = "awsedftgyhujk", held = {};
 let kbo = 12;
 addEventListener("keydown", (ev) => {
@@ -228,6 +231,7 @@ function frame(m) {
     padEl[p].style.borderColor = lit ? col : "";
     padEl[p].style.boxShadow = lit ? `0 0 16px ${col}` : "";
   });
+  if (m.lowkeys !== undefined) keyEl.forEach((el, k) => el.classList.toggle("lk", k < 12 * m.lowkeys));   // (yellow: they pick the key)
   if (m.leds !== undefined) btnEl.forEach((el, b) => el && el.classList.toggle("lit", !!((m.leds >> b) & 1)));
 }
 
