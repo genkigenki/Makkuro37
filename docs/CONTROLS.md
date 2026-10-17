@@ -35,7 +35,7 @@ Generated from the firmware's menu table (tools/docs_img.sh). On every page knob
 | GLOBE | MIX | VOLUME | VOLUME | VOLUME | VOLUME | VOLUME | VOLUME | VOLUME | VOLUME | VOLUME |
 |  |  | PAN | PAN | PAN | PAN | PAN | PAN | PAN | PAN | PAN |
 |  |  | TONE | TONE | TONE | TONE | TONE | TONE | TONE | TONE | TONE |
-| PATCH+ | SETUP | SETUP | LIGHT | CONSOLE (pads) | OUTPUT (pads) |  |  |  |  |  |
+| PATCH+ | SETUP | SETUP | LIGHT | CONSOLE (pads) | OUTPUT (pads) | START (pads) |  |  |  |  |
 |  |  | JOYSTICK | X OFFS | Y OFFS |  |  |  |  |  |  |
 
 FADER BANK: the banks (< > or top pads 1-5). A fader sets its parameter when it moves.

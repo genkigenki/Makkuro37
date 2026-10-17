@@ -11,12 +11,13 @@ typedef struct {
     uint32_t magic;
     uint8_t bright;                        /* pad LEDs 1..8 */
     uint8_t console;                       /* USB serial console (CDC) */
-    uint8_t rsv0;
+    uint8_t start;                         /* SETUP START: a preset's voices start (0 PLAY) or wait for their pads (1) */
     uint8_t user;                          /* the user preset loaded last (1..16, 0 = none) */
     uint8_t speaker;                       /* output for the little speaker (analog.c) */
-    uint8_t rsv[7];
+    uint8_t hinted;                        /* the HOME hint "TAP A TOP PAD" seen (a top pad tapped once) */
+    uint8_t rsv[6];
 } settings_t;
-static settings_t settings = {SET_MAGIC, 4, 1, 0, 0, 0, {0}};
+static settings_t settings = {SET_MAGIC, 4, 1, 0, 0, 0, 0, {0}};
 static uint16_t user_used;                 /* bit n: user preset n + 1 is stored */
 
 typedef struct {
@@ -117,6 +118,8 @@ static void persist_boot(void)
             settings.bright = 4;
         if (settings.user > NUSER)
             settings.user = 0;
+        settings.start = settings.start == 1u;
+        settings.hinted = settings.hinted == 1u;
     }
     for (o = 0; o < NUSER / 2u; o++)
         if (!uobj_read(o))
