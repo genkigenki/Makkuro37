@@ -28,7 +28,7 @@ print("  screens: " + ", ".join(sorted(os.path.basename(p) for p in glob.glob(os
 EOF
 PKG=build/makkuro37.fwsc
 [ -f $PKG ] || { echo "run ./build.sh first"; exit 1; }
-for t in "storage_test" "smk_flash_test" "owner_test" "recovery_test" "ota_test $PKG" "ldr_test ${OLD_PKG:-$PKG} $PKG"; do
+for t in "storage_test" "smk_flash_test" "owner_test" "preset_test" "recovery_test" "ota_test $PKG" "ldr_test ${OLD_PKG:-$PKG} $PKG"; do
     set -- $t
     $CC -w -DBOARD_SMK37=1 -Ifirmware/hal -Ifirmware/src -Ibuild/gen -o "$OUT/$1" "tests/$1.c" &&
         "$OUT/$1" $2 $3 >"$OUT/$1.log" 2>&1 && echo "  ok   $1" || { echo "  FAIL $1 (build/host/$1.log)"; fail=1; }

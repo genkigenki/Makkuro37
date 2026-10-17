@@ -31,6 +31,7 @@ static void kb_press(int32_t k, uint32_t side, uint32_t vel)   /* (UI) */
     }
     if (kb.rec && kb.seqlen < 16u)                  /* STEP REC: each key is the next step */
         kb.seq[kb.seqlen++] = (int8_t)k;
+    kb.lvel = (uint8_t)vel;
     kb.played = 1;
     kb.press++;
 }
@@ -138,4 +139,95 @@ static void kb_tick(void)
         kb.gate[0] = kb.gate[1] = kb.on;
     }
     kb.vib = vib;
+}
+
+/* ------------------------------------------------------------- the global key --- */
+/* SETUP LOW KEYS: the lowest keys set the key of the whole sound. Every drone keeps its chord and moves by the
+ * same interval (its VOICE PITCH, as KB tunes a voice, within +-2 octaves); the tuning's ROOT moves, so the keys
+ * play the scale (any set: maqam, gamelan too) on the new root. All glide there (kg, synth.c): each voice's
+ * offset from its old pitch falls to 0 on an S-curve in cents, every voice at its own pace (93..100 % of the
+ * glide: they drift in, the last one on time). The UI writes with interrupts off (KG_LOCK). */
+#ifndef KG_LOCK
+#define KG_LOCK() ((void)0)
+#define KG_UNLOCK() ((void)0)
+#endif
+static const uint8_t KG_PACE[NV + 1] = {255, 238, 248, 255, 255, 242, 250, 245, 255};   /* of 255 */
+
+/* the new key: root r (0..11); dir 0 the nearest way (up to a tritone), +1 up, -1 down (0..11 semitones);
+ * len the glide in control ticks (0: at once). Returns the interval, semitones. */
+static int32_t key_move(uint32_t r, int32_t dir, uint32_t len)
+{
+    int32_t old = pt.g[G_ROOT], d = ((int32_t)(r % 12u) - old + 12) % 12;
+    uint32_t v;
+    if (dir < 0)
+        d = d ? d - 12 : 0;
+    else if (!dir && d > 6)
+        d -= 12;
+    KG_LOCK();
+    for (v = 0; v < NV; v++)
+        if (VTYPE[v] != VT_VCO) {                   /* (the VCOs: from the keys, in vco_tick) */
+            int32_t p0 = pt.v[v][VP_PITCH], p1 = p0 + d * 100;
+            while (p1 > 2400)
+                p1 -= 1200;
+            while (p1 < -2400)
+                p1 += 1200;
+            pt.v[v][VP_PITCH] = (int16_t)p1;
+            kg.add[v] = (int16_t)clamp(kg.add[v] + p0 - p1, -4800, 4800);
+        }
+    kg.add[NV] = (int16_t)clamp(kg.add[NV] + (old - (int32_t)(r % 12u)) * 100, -4800, 4800);   /* (RESO) */
+    pt.g[G_ROOT] = (int16_t)(r % 12u);
+    kg.len = (uint16_t)(len > 65535u ? 65535u : len);
+    kg.ev++;
+    KG_UNLOCK();
+    return d;
+}
+static void key_clear(void)                         /* (a preset loads: its own key, no glide) */
+{
+    uint32_t v;
+    KG_LOCK();
+    for (v = 0; v <= NV; v++)
+        kg.add[v] = 0;
+    kg.clear++;
+    KG_UNLOCK();
+}
+static int key_gliding(void) { return kg.ev != kg.seen || kg.prog < 256u; }
+
+/* per tick, first: a new key's offsets, then each voice's offset on its S-curve (3x^2 - 2x^3) */
+static void kg_tick(void)
+{
+    uint32_t v, slow = 0;
+    kg.fresh = 0;
+    if (kg.clear != kg.cleared) {
+        kg.cleared = kg.clear;
+        for (v = 0; v <= NV; v++)
+            kg.from[v] = kg.off[v] = 0;
+        kg.prog = 256;
+    }
+    if (kg.ev != kg.seen) {
+        kg.seen = kg.ev;
+        kg.fresh = 1;
+        kg.t = 0;
+        for (v = 0; v <= NV; v++) {
+            kg.n[v] = (uint32_t)kg.len * KG_PACE[v] / 255u;
+            if (v == NV || VTYPE[v] != VT_VCO)
+                kg.from[v] = kg.off[v] = kg.off[v] + kg.add[v] * 16;
+            kg.add[v] = 0;
+        }
+        kg.prog = 0;
+        return;
+    }
+    if (kg.t < 0xFFFFFFu)
+        kg.t++;
+    for (v = 0; v <= NV; v++) {
+        int32_t x, sc;
+        slow = kg.n[v] > slow ? kg.n[v] : slow;
+        if (kg.t >= kg.n[v]) {
+            kg.from[v] = kg.off[v] = 0;
+            continue;
+        }
+        x = (int32_t)((kg.t << 15) / kg.n[v]);     /* 0..32767 */
+        sc = (int32_t)((int64_t)x * x * (3 * 32768 - 2 * x) >> 30);   /* 0..32768, rising */
+        kg.off[v] = kg.from[v] - (int32_t)(((int64_t)kg.from[v] * sc) >> 15);
+    }
+    kg.prog = (uint16_t)(kg.t >= slow ? 256u : (kg.t << 8) / slow);
 }

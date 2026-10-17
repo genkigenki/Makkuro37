@@ -98,7 +98,7 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 /* ---- the user presets (MINE) in RAM (this session) ---- */
 #define NUSER 16u
 static uint16_t user_used;
-static struct { uint8_t bright, console, rsv0, user, speaker; } settings = {4, 0, 0, 0, 0};
+static struct { uint8_t bright, console, start, user, speaker, hinted, lowkeys, kglide; } settings = {4, 0, 0, 0, 0, 0, 0, 0};
 static patch_t users[NUSER];
 static int user_save(uint32_t n)
 {

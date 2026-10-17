@@ -36,6 +36,7 @@ Generated from the firmware's menu table (tools/docs_img.sh). On every page knob
 |  |  | PAN | PAN | PAN | PAN | PAN | PAN | PAN | PAN | PAN |
 |  |  | TONE | TONE | TONE | TONE | TONE | TONE | TONE | TONE | TONE |
 | PATCH+ | SETUP | SETUP | LIGHT | CONSOLE (pads) | OUTPUT (pads) | START (pads) |  |  |  |  |
+|  |  | KEY | LOWKEY | GLIDE |  |  |  |  |  |  |
 |  |  | JOYSTICK | X OFFS | Y OFFS |  |  |  |  |  |  |
 
 FADER BANK: the banks (< > or top pads 1-5). A fader sets its parameter when it moves.
@@ -47,3 +48,7 @@ FADER BANK: the banks (< > or top pads 1-5). A fader sets its parameter when it 
 | 3 | LFO | A RATE | A SHAPE | B RATE | B SHAPE |
 | 4 | PLAY | GLIDE | VIBRATO | VIB RATE | ARP RATE |
 | 5 | OUTPUT | MASTER | WIDTH | TAPE | ANALOG |
+
+SETUP, page KEY: **LOWKEY** OFF, 12 KEYS or 24 KEYS. On, the lowest 12 (24) keys pick the key of everything and play nothing; the keys above play as before. 12 KEYS: the nearest way (up to a tritone); 24 KEYS: the lowest octave moves down, the next one up. **GLIDE** 0.0..8.0 s (6.0): how long all glide to the new key.
+
+WAVE of voices 4 and 5 (SOUND, page WAVE): SAW, PULSE, TRI, SINE, SAW<>, SIN<>TRI, NOISE and the played sounds VOICE (SHAPE and the mod wheel: the vowel), BOWED (the key's velocity: brightness) and GLASS (SHAPE: the overtones).

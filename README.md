@@ -7,6 +7,8 @@
 **A microtonal drone synth for the M-Vave SMK-37 (SMK-37 Pro, Elite or MKE-P37).**
 Eight drones in eight columns, each a little soot creature on the screen. 96 presets in six themes, 16 places for
 your own. One logic for every menu: a button opens it, K1-K8 set the eight columns, < > turn the pages.
+The lowest keys can set the key of everything, all voices gliding there together (SETUP, page KEY), and the keys
+have three played sounds besides the plain waves: VOICE (a choir through vowels), BOWED and GLASS.
 Unofficial firmware, not affiliated with or endorsed by M-Vave. Install at your own risk.
 
 [Guide](docs/GUIDE.md) · [Control map](docs/CONTROLS.md) · [Web installer](https://genkigenki.github.io/smk37/) · [Simulator](https://genkigenki.github.io/smk37/makkuro37-sim/)

@@ -309,7 +309,7 @@ static int32_t reso(fx_t *f, int16_t *m, int32_t x, int32_t X, int32_t Y, int32_
     uint32_t k;
     if ((f->w & 255u) == 0u || !f->pv[0])           /* the lengths (now and then: the root may change) */
         for (k = 0; k < 4u; k++) {
-            int32_t cents = 3600 + pt.g[G_ROOT] * 100 + IV[k] + (Z - 64) * 100 + (int32_t)side * 7;
+            int32_t cents = 3600 + pt.g[G_ROOT] * 100 + (kg.off[NV] >> 4) + IV[k] + (Z - 64) * 100 + (int32_t)side * 7;
             uint32_t inc = cents_inc(cents);
             f->pv[k] = (int32_t)(0xFFFFFFFFu / (inc ? inc : 1u));   /* samples a period */
             if (f->pv[k] > 12000)

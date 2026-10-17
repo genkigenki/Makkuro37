@@ -15,9 +15,11 @@ enum { CL_TUNE1 = VP_T0, CL_VOLT = VP_T5, CL_MUTE = VP_T6, CL_MOD = VP_T7, CL_SU
 /* noise ("Papa Srapa"): tone + square modulator */
 enum { NZ_PITCH = VP_T0, NZ_RANGE, NZ_RATE, NZ_MULT, NZ_FMAMT, NZ_DIV, NZ_MODE, NZ_NOISE, NZ_SHAMT, NZ_SHCLK };
 enum { NM_DRONE, NM_FM, NM_AM, NM_FMAM };
-/* VCO: AS3340-like, six waves */
+/* VCO: AS3340-like, six waves and noise; then three played sounds (synth.c tim_render): VOICE (a choir through
+ * vowel formants, SHAPE / the mod wheel the vowel), BOWED (a bowed string, the key's velocity its brightness),
+ * GLASS (a struck glass, SHAPE its overtones) */
 enum { VC_WAVE = VP_T0, VC_SHAPE, VC_OCT, VC_TUNE, VC_FM, VC_SYNC, VC_DEC, VC_SUS, VC_EG, VC_SUB };
-enum { W_SAW, W_PULSE, W_TRI, W_SINE, W_SAWMORPH, W_SINTRI, W_NOISE };
+enum { W_SAW, W_PULSE, W_TRI, W_SINE, W_SAWMORPH, W_SINTRI, W_NOISE, W_VOICE, W_BOWED, W_GLASS, W_N };
 enum { EG_NORM, EG_HOLD, EG_LOOP };
 
 /* modulation sources (VP_MSRC, filter CV, ...) and gate sources (VP_GSRC) */
@@ -69,6 +71,11 @@ typedef struct {                /* run-time state of a voice (audio side) */
     /* VCO */
     int32_t pitch;              /* cents x 16, gliding */
     uint8_t trig;               /* key triggers seen */
+    uint8_t thits;              /* (the played sounds: attacks seen) */
+    uint16_t vt;                /* ticks since the attack (their vibrato fades in) */
+    uint32_t ph2, ph3, vph;     /* their second / modulator phases, their vibrato */
+    int32_t tk[10];             /* their per-tick constants */
+    int32_t tz[8];              /* their filter states */
 } vstate_t;
 
 /* tuning sets */

@@ -15,7 +15,8 @@ static const char *const N_RANGE[2] = {"LO", "HI"};
 static const char *const N_MULT[2] = {"X1", "X10"};
 static const char *const N_NMODE[4] = {"DRONE", "FM", "AM", "FM+AM"};
 static const char *const N_SHCLK[4] = {"MOD", "LFO A", "LFO B", "PULSER"};
-static const char *const N_WAVE[7] = {"SAW", "PULSE", "TRI", "SINE", "SAW<>", "SIN<>TRI", "NOISE"};
+static const char *const N_WAVE[W_N] = {"SAW", "PULSE", "TRI", "SINE", "SAW<>", "SIN<>TRI", "NOISE", "VOICE", "BOWED",
+                                        "GLASS"};
 static const char *const N_OCT[8] = {"LO", "64'", "32'", "16'", "8'", "4'", "2'", "1'"};
 static const char *const N_EG[3] = {"GATE", "HOLD", "LOOP"};
 static const char *const N_TSET[TS_N] = {"12-TET", "JUST", "PYTHAG", "24-TET", "RAST", "SLENDRO", "PELOG"};
@@ -55,7 +56,7 @@ static const pdesc_t VDESC[3][VP_N] = {
         {"PITCH", -2400, 2400, 0, F_CENTS, 0}, {"WAVE", 0, 4, CW_SQUARE, F_ENUM, N_CWAVE},
         {"DETUNE", 0, 127, 0, F_NUM, 0}, {"DTN RATE", 0, 127, 50, F_NUM, 0}},
     [VT_VCO] = {
-        {"WAVE", 0, 6, W_SAW, F_ENUM, N_WAVE}, {"SHAPE", 0, 127, 64, F_NUM, 0},
+        {"WAVE", 0, W_N - 1, W_SAW, F_ENUM, N_WAVE}, {"SHAPE", 0, 127, 64, F_NUM, 0},
         {"OCTAVE", 0, 7, 4, F_ENUM, N_OCT}, {"TUNE", -600, 600, 0, F_CENTS, 0},
         {"FM", 0, 127, 0, F_NUM, 0}, {"SYNC", 0, 1, 0, F_ONOFF, 0},
         {"DECAY", 0, 127, 70, F_NUM, 0}, {"SUSTAIN", 0, 127, 100, F_NUM, 0},

@@ -9,6 +9,17 @@ static volatile uint8_t free_vco;          /* FREE-PLAY: the VCOs too follow gat
 static volatile uint8_t gate_vel[NV] = {100, 100, 100, 100, 100, 100, 100, 100};   /* the pads' velocity */
 static int32_t modv[MS_N];                 /* modulation sources, Q15 */
 static volatile int32_t joy_x, joy_y;      /* wheels, Q15: X -32767..32767 (springs back), Y 0..32767 */
+/* the global key (keys.c key_move): each voice's pitch offset glides to 0 on an S-curve in cents (equal steps
+ * in pitch), every voice at its own pace; [NV] the RESO effect's root */
+static struct {
+    volatile int16_t add[NV + 1];          /* (UI, interrupts off) cents to glide from, taken at the next tick */
+    volatile uint8_t ev, clear;            /* (UI) ev bumped after add[]: a new key; clear: all offsets 0 at once */
+    volatile uint16_t len;                 /* (UI) the glide, control ticks */
+    uint8_t seen, cleared, fresh;          /* fresh: this tick took a new key (a VCO takes its own in vco_tick) */
+    int32_t from[NV + 1], off[NV + 1];     /* the offset at the start and now, cents x 16 */
+    uint32_t t, n[NV + 1];                 /* ticks since the start, each voice's length */
+    volatile uint16_t prog;                /* 0..256: how far the slowest voice is (the screen) */
+} kg = {.prog = 256};
 static struct {
     int32_t peak;                          /* |out| max since the last read (console), Q15 */
     uint32_t overs;                        /* samples the limiter had to bend */
@@ -171,11 +182,11 @@ static int32_t mod_cents(const int16_t *p)      /* the voice's MOD source: up to
 
 static void classic_tick(vstate_t *s, const int16_t *p, int32_t fine)
 {
-    int32_t volt = p[CL_VOLT], trans = -volt * 2400 / 127, mc = mod_cents(p), dt = dtn_tick(s, p);
+    int32_t volt = p[CL_VOLT], trans = -volt * 2400 / 127, mc = mod_cents(p), dt = dtn_tick(s, p), ko = kg.off[s - vs];
     uint32_t g;
     for (g = 0; g < 5u; g++) {
         int32_t c = GEN_LO[g] * 100 + p[CL_TUNE1 + g] + p[VP_PITCH] + trans + fine +
-                    ((drift(s, g) + (g & 1u ? -dt : dt)) >> 4);   /* (detune: alternately up, down) */
+                    ((drift(s, g) + (g & 1u ? -dt : dt) + ko) >> 4);   /* (detune: alternately up, down; the key) */
         if ((p[CL_MOD] >> g) & 1)
             c += mc;
         s->inc[g] = (p[CL_MUTE] >> g) & 1 ? 0u : cents_inc(c);
@@ -265,7 +276,7 @@ static void noise_tick(vstate_t *s, const int16_t *p, int32_t fine)
     if (clk && ((clk_edges >> (clk - 1u)) & 1u))
         s->sh = (int32_t)xorshift(&s->nz) >> 16;   /* S&H on LFO A / B / the pulser */
     c = lo + p[NZ_PITCH] * (hi - lo) / 127 + p[VP_PITCH] + fine + mod_cents(p) + ((s->sh * (a * a * 2400 / 16129)) >> 15) +
-        (drift(s, 0) >> 4);
+        ((drift(s, 0) + kg.off[s - vs]) >> 4);
     s->inc[0] = cents_inc(c + (dtn_tick(s, p) >> 4));
     if (s->inc[0] > 1u << 28)
         s->inc[0] = 1u << 28;
@@ -334,11 +345,12 @@ static struct {
     uint32_t ph, vph;
     int32_t cents[2], vib;
     uint8_t gate[2], trig[2];
-} kb = {.cents = {4800, 4800}};
+    uint8_t lvel;                          /* the last key's velocity (the played sounds) */
+} kb = {.cents = {4800, 4800}, .lvel = 100};
 static const int16_t OCT_CENTS[8] = {-6000, -3600, -2400, -1200, 0, 1200, 2400, 3600};
 enum { VK_W, VK_KU, VK_KD, VK_SHAPE, VK_PW, VK_FM };
 
-static void adsr(vstate_t *s, const int16_t *p, uint32_t gate)
+static void adsr(vstate_t *s, const int16_t *p, uint32_t gate, uint32_t att)
 {
     int32_t top = 1 << 24, sus = p[VC_SUS] * 132104;          /* SUSTAIN 127 = full */
     uint32_t eg = (uint32_t)p[VC_EG];
@@ -350,7 +362,7 @@ static void adsr(vstate_t *s, const int16_t *p, uint32_t gate)
         s->stage = 3;
     s->gate = (uint8_t)gate;
     if (s->stage == 1u) {
-        s->env += (int32_t)ENV_STEP[p[VP_ATT] & 127];
+        s->env += (int32_t)ENV_STEP[att & 127u];
         if (s->env >= top) {
             s->env = top;
             s->stage = 2;
@@ -369,15 +381,31 @@ static void adsr(vstate_t *s, const int16_t *p, uint32_t gate)
     }
 }
 
+static void tim_tick(vstate_t *s, const int16_t *p, uint32_t w);
+static int32_t tim_vib(vstate_t *s, uint32_t w);
+
 static void vco_tick(uint32_t v, vstate_t *s, const int16_t *p, int32_t fine, int32_t glide)
 {
+    uint32_t wv = (uint32_t)p[VC_WAVE];
     int32_t tgt = (kb.cents[v - 3u] + kb.vib + OCT_CENTS[p[VC_OCT] & 7] + p[VC_TUNE] + p[VP_PITCH] + fine + mod_cents(p) +
                    ((joy_x * 200) >> 15)) * 16 + drift(s, 0) + dtn_tick(s, p), w;   /* the joystick bends +-2 st */
+    if (wv >= W_VOICE)
+        tgt += tim_vib(s, wv);                     /* (the played sounds: their own vibrato) */
+    if (kg.fresh && s->pitch) {                    /* a new key (keys.c): glide from where it is */
+        kg.from[v] = kg.off[v] = s->pitch + kg.off[v] - tgt;
+        s->pitch = tgt;
+    }
     if (!s->pitch || !glide)
         s->pitch = tgt;
     else
         s->pitch = tgt + (int32_t)(((int64_t)(s->pitch - tgt) * ENV_FALL[glide]) >> 16);
-    s->inc[0] = cents_inc(s->pitch >> 4);
+    s->inc[0] = cents_inc((s->pitch + kg.off[v]) >> 4);
+    if (wv >= W_VOICE) {
+        if (s->inc[0] > 1u << 28)
+            s->inc[0] = 1u << 28;
+        tim_tick(s, p, wv);
+        return;
+    }
     if (s->inc[0] > 1u << 29)
         s->inc[0] = 1u << 29;
     w = clamp(p[VC_SHAPE] * 258, 128, 32640);      /* the morph's corner, 15-bit phase */
@@ -414,6 +442,106 @@ static inline int32_t vco_wave(const vstate_t *s, uint32_t w, uint32_t ph, uint3
     }
 }
 
+/* ------------------------------------------------------------- the played sounds --- */
+/* VCO waves VOICE, BOWED, GLASS: per tick (tim_tick) their constants from SHAPE, the mod wheel, the key's
+ * velocity and the envelope; per sample (tim_render) the sound. FM, SYNC and SUB act on the other waves. */
+enum { TQ1 = 600, TQ2 = 410, TQ3 = 330, BODY_F = 280, BODY_Q = 1600 };   /* SVF damping (1 / Q), Q12; 480 Hz */
+/* the vowels A E I O U: formants (Hz) and their levels (Q12), after the classic vowel charts */
+static const int16_t VOWEL[5][3] = {{730, 1090, 2440}, {530, 1840, 2480}, {270, 2290, 3010}, {570, 840, 2410},
+                                    {300, 870, 2240}};
+static const int16_t VGAIN[5][3] = {{4096, 2400, 800}, {4096, 2000, 1100}, {4096, 900, 700}, {4096, 2200, 500},
+                                    {4096, 1000, 300}};
+
+static int32_t tim_vib(vstate_t *s, uint32_t w)   /* cents x 16: a gentle vibrato, fading in after the attack */
+{
+    int32_t ramp, d = w == W_GLASS ? 0 : w == W_BOWED ? 160 : 260;   /* 10 / 16 cents */
+    if (s->hits != s->thits) {
+        s->thits = s->hits;
+        s->vt = 0;
+    }
+    if (s->vt < 0xFFFFu)
+        s->vt++;
+    ramp = s->vt < 300u ? 0 : s->vt >= 1100u ? 32768 : ((int32_t)s->vt - 300) * 41;   /* 0.2 .. 0.8 s */
+    s->vph += w == W_BOWED ? 17452000u : 16206000u;                                   /* 5.6 / 5.2 Hz */
+    return (((SINE[s->vph >> 22] * d) >> 15) * ramp) >> 15;
+}
+
+static void tim_tick(vstate_t *s, const int16_t *p, uint32_t w)
+{
+    int32_t vel = kb.lvel, sh = p[VC_SHAPE], e = s->env >> 9;   /* (the envelope, Q15) */
+    uint32_t inc = s->inc[0], k;
+    if (w == W_VOICE) {                            /* the vowel: SHAPE, the mod wheel on towards U */
+        int32_t m = clamp(sh * 258 + joy_y, 0, 32767) * 4, seg = m >> 15, fr = m & 32767;
+        for (k = 0; k < 3u; k++) {
+            int32_t hz = VOWEL[seg][k] + (((VOWEL[seg + 1][k] - VOWEL[seg][k]) * fr) >> 15);
+            s->tk[k] = (hz * 1195) >> 11;          /* 2 sin(pi f / FS) ~ 2 pi f / FS, Q12 */
+            s->tk[3u + k] = VGAIN[seg][k] + (((VGAIN[seg + 1][k] - VGAIN[seg][k]) * fr) >> 15);
+        }
+        s->tk[6] = 300 + (127 - vel) * 12;         /* breath: more for a soft key */
+        s->tk[7] = (int32_t)(inc + (inc >> 8));    /* the second singer, 7 cents up */
+    } else if (w == W_BOWED) {                     /* brightness: the key's velocity as the bow swells; SHAPE more */
+        int32_t mult = 80 + ((((vel * e) >> 15) * (128 + sh * 4)) >> 7);   /* the low-pass, x the pitch, Q6 */
+        s->tk[0] = clamp((int32_t)((inc >> 10) * (uint32_t)mult / 1280u), 200, 30000);
+        s->tk[1] = 700 + (s->stage == 1u ? (32767 - e) >> 3 : 0);          /* bow noise, a scrape at first */
+    } else {                                       /* GLASS: a strike (by velocity) rings out into a soft tone */
+        if (s->vt == 1u)
+            s->tk[8] = 9000 + vel * 260;
+        else
+            s->tk[8] -= s->tk[8] >> 9;
+        s->tk[0] = 2500 + s->tk[8];                /* the FM index (2^32 / 2 pi a radian / 32767) */
+        s->tk[1] = (int32_t)(inc + (uint32_t)(((uint64_t)inc * (uint32_t)sh * 3u) / 127u));   /* x 1 .. 4 */
+        s->tk[2] = (int32_t)(inc + (inc >> 9));    /* a second glass, 3 cents up */
+    }
+}
+
+static void tim_render(vstate_t *s, uint32_t w, int32_t *o, uint32_t n)
+{
+    uint32_t i, ph = s->ph[0], inc = s->inc[0], ph2 = s->ph2;
+    if (w == W_VOICE) {                            /* two saws and breath through three formants (SVFs) */
+        uint32_t inc2 = (uint32_t)s->tk[7];
+        int32_t f1 = s->tk[0], f2 = s->tk[1], f3 = s->tk[2], g1 = s->tk[3], g2 = s->tk[4], g3 = s->tk[5];
+        int32_t kn = s->tk[6], l1 = s->tz[0], b1 = s->tz[1], l2 = s->tz[2], b2 = s->tz[3], l3 = s->tz[4], b3 = s->tz[5];
+        for (i = 0; i < n; i++) {
+            int32_t x, h;
+            ph += inc;
+            ph2 += inc2;
+            x = (saw(ph, inc) + saw(ph2, inc2) + ((((int32_t)xorshift(&s->rnd) >> 16) * kn) >> 13)) >> 4;
+            l1 += (f1 * b1) >> 12, h = x - l1 - ((TQ1 * b1) >> 12), b1 += (f1 * h) >> 12;
+            l2 += (f2 * b2) >> 12, h = x - l2 - ((TQ2 * b2) >> 12), b2 += (f2 * h) >> 12;
+            l3 += (f3 * b3) >> 12, h = x - l3 - ((TQ3 * b3) >> 12), b3 += (f3 * h) >> 12;
+            o[i] += ((b1 * g1 + b2 * g2 + b3 * g3) >> 12) * 7 >> 2;
+        }
+        s->tz[0] = l1, s->tz[1] = b1, s->tz[2] = l2, s->tz[3] = b2, s->tz[4] = l3, s->tz[5] = b3;
+        s->ph2 = ph2;
+    } else if (w == W_BOWED) {                     /* a saw and bow noise, a low-pass by the bow, a body */
+        int32_t k = s->tk[0], kn = s->tk[1], a = s->tz[0], b = s->tz[1], bl = s->tz[2], bb = s->tz[3];
+        for (i = 0; i < n; i++) {
+            int32_t x, h;
+            ph += inc;
+            x = saw(ph, inc) + ((((int32_t)xorshift(&s->rnd) >> 16) * kn) >> 15);
+            a += ((x - a) * k) >> 15;
+            b += ((a - b) * k) >> 15;
+            bl += (BODY_F * bb) >> 12, h = (b >> 2) - bl - ((BODY_Q * bb) >> 12), bb += (BODY_F * h) >> 12;
+            o[i] += ((b * 18000) >> 15) + (bb >> 1);
+        }
+        s->tz[0] = a, s->tz[1] = b, s->tz[2] = bl, s->tz[3] = bb;
+    } else {                                       /* GLASS: two sines (3 cents apart), one modulator */
+        uint32_t pm = s->ph3, minc = (uint32_t)s->tk[1], inc2 = (uint32_t)s->tk[2];
+        int32_t ki = s->tk[0];
+        for (i = 0; i < n; i++) {
+            uint32_t m;
+            ph += inc;
+            ph2 += inc2;
+            pm += minc;
+            m = (uint32_t)(SINE[pm >> 22] * ki);
+            o[i] += ((SINE[(ph + m) >> 22] + SINE[(ph2 + m) >> 22]) * 13000) >> 15;
+        }
+        s->ph3 = pm;
+        s->ph2 = ph2;
+    }
+    s->ph[0] = ph;
+}
+
 /* both VCOs in one pass: 5 follows 4 (FM, SYNC) */
 static void vco_render(int32_t *o4, int32_t *o5, uint32_t n)
 {
@@ -421,12 +549,25 @@ static void vco_render(int32_t *o4, int32_t *o5, uint32_t n)
     const int16_t *pa = pt.v[3], *pb = pt.v[4];
     uint32_t i, wa = (uint32_t)pa[VC_WAVE], wb = (uint32_t)pb[VC_WAVE], pha = a->ph[0], phb = b->ph[0];
     uint32_t ia = a->inc[0], ib = b->inc[0], sync = (uint32_t)pb[VC_SYNC], on_a = o4 != 0, on_b = o5 != 0;
+    uint32_t ta = wa >= W_VOICE, tb = wb >= W_VOICE;   /* a played sound: on its own (no FM, no SYNC) */
     int32_t fa = a->kv[VK_FM], fb = b->kv[VK_FM], ya = a->last[0], yb;
     int32_t sa = pa[VC_SUB] * 160, sb = pb[VC_SUB] * 160;   /* sub levels (Q15 units) */
+    if (ta && on_a)
+        tim_render(a, wa, o4, n);
+    if (tb && on_b)
+        tim_render(b, wb, o5, n);
+    if (ta)
+        on_a = 0, ya = 0, fb = 0, sync = 0;
+    if (tb)
+        on_b = 0;
+    if (ta && !on_b)
+        return;
     for (i = 0; i < n; i++) {
-        uint32_t inc = ia + (uint32_t)((int32_t)(ia >> 14) * ((ya * fa) >> 15));   /* 4: feedback FM */
-        pha += inc;
-        ya = wa == W_NOISE ? gnoise(a, 0, pha, inc) : vco_wave(a, wa, pha, inc);
+        if (!ta) {
+            uint32_t inc = ia + (uint32_t)((int32_t)(ia >> 14) * ((ya * fa) >> 15));   /* 4: feedback FM */
+            pha += inc;
+            ya = wa == W_NOISE ? gnoise(a, 0, pha, inc) : vco_wave(a, wa, pha, inc);
+        }
         if (on_a) {
             o4[i] += (ya * 26000) >> 15;
             if (sa) {                              /* the sub: a square an octave down */
@@ -435,7 +576,7 @@ static void vco_render(int32_t *o4, int32_t *o5, uint32_t n)
             }
         }
         if (on_b) {
-            inc = ib + (uint32_t)((int32_t)(ib >> 13) * ((ya * fb) >> 15));         /* 5: FM from 4 */
+            uint32_t inc = ib + (uint32_t)((int32_t)(ib >> 13) * ((ya * fb) >> 15));   /* 5: FM from 4 */
             phb += inc;
             if (sync && pha < ia)
                 phb = pha;                         /* hard sync: 5 restarts with 4 */
@@ -447,7 +588,10 @@ static void vco_render(int32_t *o4, int32_t *o5, uint32_t n)
             }
         }
     }
-    a->ph[0] = pha, b->ph[0] = phb, a->last[0] = ya;
+    if (!ta)
+        a->ph[0] = pha, a->last[0] = ya;
+    if (!tb)
+        b->ph[0] = phb;
 }
 
 /* ------------------------------------------------------------- modulation --- */

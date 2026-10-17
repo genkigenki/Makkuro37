@@ -223,6 +223,12 @@ static int32_t wave_y(uint32_t w, uint32_t ph, int32_t shape)
         return (int32_t)(ph >> 16) - 32768;
     if (w == W_PULSE)
         return ph < (uint32_t)t.kv[VK_PW] ? 26000 : -26000;
+    if (w == W_VOICE)                                    /* (the played sounds: a picture of each) */
+        return (SINE[ph >> 22] * 3 + SINE[(ph * (2u + (uint32_t)shape / 32u)) >> 22] * 2) / 5;
+    if (w == W_BOWED)
+        return (((int32_t)(ph >> 16) - 32768) * 3 + SINE[(ph + 0x40000000u) >> 22]) / 4;
+    if (w == W_GLASS)
+        return SINE[(ph + (uint32_t)(SINE[(ph * 7u / 2u) >> 22] * 20000)) >> 22];
     return vco_wave(&t, w, ph, 0);
 }
 
@@ -235,8 +241,19 @@ static int32_t voice_wave(uint32_t v, uint32_t ph, int32_t i)
     return VTYPE[v] == VT_VCO ? wave_y((uint32_t)w, ph, pt.v[v][VC_SHAPE]) : cwave((uint32_t)w, ph, 0);
 }
 
-/* below the creatures: each voice's note (one row), then the turned value / a message / CHAOS / KB, then what
- * the bottom pads do */
+/* LOW KEYS: the panel while all glide to the new key, and a moment after */
+static int key_shown(void)
+{
+    static uint32_t end;
+    if (!ui.key_t)
+        return 0;
+    if (key_gliding())
+        end = fm1_ms;
+    return fm1_ms - end < 1200u;
+}
+
+/* below the creatures: each voice's note (one row), then the turned value / a message / CHAOS / KB / the key,
+ * then what the bottom pads do */
 static void home_bottom(void)
 {
     static const char *const BOT[8] = {"KB", "", "", "", "", "PULSE", "HOLD", "CHAOS"};
@@ -279,6 +296,18 @@ static void home_bottom(void)
                     cv_rect(x - 11, 29 + 22 * r, 22, 1, rgbk(VCOL[v], 120));   /* (struck out) */
             }
         }
+    } else if (key_shown()) {                            /* LOW KEYS: the new key, how far all have glided */
+        char b[16];
+        int32_t w = 180 * (int32_t)(kg.prog > 256u ? 256u : kg.prog) / 256;
+        str_cpy(b, NOTE_NAMES[ui.key_from % 12u], sizeof b);
+        str_cat(b, " > ", sizeof b);
+        str_cat(b, NOTE_NAMES[pt.g[G_ROOT] % 12], sizeof b);
+        text_c(120, 34, &FONT_L, b, RGB(255, 255, 255));
+        str_cpy(b, "KEY  ", sizeof b);
+        str_cat(b, TSETS[pt.g[G_TSET] % TS_N].name, sizeof b);
+        text_c(120, 60, &FONT_S, b, RGB(150, 140, 190));
+        cv_rect(30, 78, 180, 6, RGB(20, 70, 90));
+        cv_rect(30, 78, w, 6, RGB(60, 220, 255));
     } else if (ui.kbm)                                   /* KB: what to do, blinking until a voice is selected */
         text_c(120, 46, &FONT_L, ui.nsel ? "PLAY KEYBOARD" : "SELECT VOICES",
                ui.nsel || bl ? RGB(60, 220, 255) : RGB(20, 70, 90));
@@ -542,7 +571,7 @@ static const char *help_line(uint32_t p, uint32_t i, char *b, uint32_t n)
         {"HOME:", "K1-K8 PITCH", "MENU:", "KNOB=COLUMN", "2 CHOICES:", "THE PADS"},
         {0, 0, 0, 0, 0, 0},
         {0, 0, "KNOBB  PRESETS", "PATCH  HOME", "PATCH+ SETUP", "< >    PAGE"},
-        {"PLAY  FREE", "REC   HOLD", "OCT   TRANSP", "FADERB BANKS", "KNOBB+ HELP", ""},
+        {"PLAY  FREE", "REC   HOLD", "OCT   TRANSP", "FADERB BANKS", "KNOBB+ HELP", "LOWKEY KEY"},
         {0, 0, 0, 0, "PITCH BEND", "MOD  CLOSE"}};
     if (i == 0xFFu)
         return T[p];

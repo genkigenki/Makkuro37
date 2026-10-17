@@ -9,6 +9,7 @@ static void synth_tick(void)
     uint32_t v;
     int32_t fine = pt.g[G_FINE], glide = clamp(pt.g[G_GLIDE], 0, 127) * 3 / 4;
     syn.ticks++;
+    kg_tick();
     mod_tick();
     kb_tick();
     for (v = 0; v < NV; v++) {
@@ -24,7 +25,7 @@ static void synth_tick(void)
             if (s->trig != kb.trig[i] && kb.gate[i])
                 s->gate = 0;                       /* a new key or arp step: attack again */
             s->trig = kb.trig[i];
-            adsr(s, p, gate);
+            adsr(s, p, gate, p[VC_WAVE] == W_BOWED && p[VP_ATT] < 66 ? 66u : (uint32_t)p[VP_ATT]);   /* (a bow: slow) */
             vco_tick(v, s, p, fine, glide);
         } else {
             env_ar(s, gate, (uint32_t)att, gate_in[v] == 2u ? 40u : (uint32_t)p[VP_RLS]);

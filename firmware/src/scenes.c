@@ -15,9 +15,11 @@ typedef struct {
     uint8_t user;                          /* the user preset loaded last (1..16, 0 = none) */
     uint8_t speaker;                       /* output for the little speaker (analog.c) */
     uint8_t hinted;                        /* the HOME hint "TAP A TOP PAD" seen (a top pad tapped once) */
-    uint8_t rsv[6];
+    uint8_t lowkeys;                       /* SETUP LOW KEYS: 0 off, 1 / 2 the lowest 12 / 24 keys pick the key */
+    uint8_t kglide;                        /* SETUP GLIDE: the key's glide in tenths of a second + 1, 0 = 6 s */
+    uint8_t rsv[4];
 } settings_t;
-static settings_t settings = {SET_MAGIC, 4, 1, 0, 0, 0, 0, {0}};
+static settings_t settings = {SET_MAGIC, 4, 1, 0, 0, 0, 0, 0, 0, {0}};
 static uint16_t user_used;                 /* bit n: user preset n + 1 is stored */
 
 typedef struct {
@@ -120,6 +122,10 @@ static void persist_boot(void)
             settings.user = 0;
         settings.start = settings.start == 1u;
         settings.hinted = settings.hinted == 1u;
+        if (settings.lowkeys > 2u)
+            settings.lowkeys = 0;
+        if (settings.kglide > 81u)
+            settings.kglide = 0;
     }
     for (o = 0; o < NUSER / 2u; o++)
         if (!uobj_read(o))

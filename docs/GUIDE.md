@@ -1,6 +1,6 @@
 # Makkuro37: step by step
 
-Eight lessons, about five minutes each. Do the step and listen.
+Ten lessons, about five minutes each. Do the step and listen.
 
 Two buttons are always there for you: **KNOB BANK** shows the presets, **PATCH** takes you home to the
 creatures. Hold **KNOB BANK** for HELP.
@@ -149,6 +149,49 @@ you move it; switching banks changes nothing.
    voices start as it has them) or SILENT (every preset loads asleep, you wake the voices with their pads).
    Master volume, width, tape and analog drift are on the faders, bank OUTPUT.
 
+## 9. The key of everything
+
+<img src="img/screen-menu-setup-2.png" width="240" alt="SETUP, page KEY">
+
+1. Hold **PATCH** for SETUP and press **>**: page 2/3, KEY.
+2. Turn **K1** (LOWKEY) to **12 KEYS**. The lowest octave of the keyboard (C to B) now picks the key of the whole
+   sound and plays nothing. The keys above it play as before; **OCT -** / **OCT +** still move them.
+3. Turn **K2** (GLIDE): how long everything takes to reach a new key, 0.0 to 8.0 seconds (6.0 to start with).
+4. Go home, wake a few drones, play a key above the lowest octave. Now press the lowest **D**.
+5. All glide to D: every drone keeps its chord and slides over by the same interval, each at its own pace (a
+   lush drift), the last one on time. The tuning's root moves to D, so the keys play its scale on D; a held
+   note glides to its place in it.
+6. The screen shows **C > D**, the tuning and a bar: how far everything has glided.
+
+<img src="img/screen-home-key.png" width="240" alt="Home screen during a key change">
+
+- **12 KEYS** take the nearest way: up to a tritone up or down. **24 KEYS**: the lowest octave moves down to the
+  new key, the next one up to it (both octaves then play nothing).
+- Every tuning: 12-TET, JUST, PYTHAG, 24-TET, RAST (maqam), SLENDRO and PELOG (gamelan). With the 12-note sets a
+  key keeps its own name (D plays D, now the tonic); with SLENDRO, PELOG and 24-TET the bottom key plays the
+  root, as always.
+- The drones move by their VOICE PITCH (the knobs on the creatures screen), as KB tunes a voice, within two
+  octaves either way (past that they come an octave back). GLIDE 0.0: at once.
+- The key is part of the sound: a sound saved to MINE keeps it, a preset brings its own (at once).
+
+## 10. Played sounds
+
+<img src="img/screen-menu-sound-1.png" width="240" alt="SOUND menu, page WAVE">
+
+1. Press **PARA**: SOUND, page WAVE. Turn **K4** (voice 4) to the right past NOISE: **VOICE**, **BOWED**,
+   **GLASS**. **K5** does the same for voice 5. Play some keys.
+2. **VOICE**: a small choir, two voices a hair apart, sung through vowel formants. SHAPE (page V4 VCO, K1) sets
+   the vowel, A E I O U from left to right; the **MOD** wheel moves it on towards U. A gentle vibrato fades in
+   after each attack; a soft key breathes more. (The mod wheel also closes the filter: EFFECTS, CV AMT 0 leaves
+   it to the vowel.)
+3. **BOWED**: a bowed string. It swells in slowly, the bow scrapes a little at first, a harder key bows
+   brighter; SHAPE brightens it more. A vibrato comes in as the note settles.
+4. **GLASS**: struck glass. A strike, brighter for a harder key, rings out into a soft, slightly beating tone.
+   SHAPE sets its overtones: from round on the left to bell-like and stranger on the right. ENVELOPE (ATTACK,
+   DECAY, SUSTAIN, RELEASE) shapes it as any other wave.
+5. FM, SYNC and SUB work with the other waves; the played sounds stay on their own.
+6. Saved with your sounds in MINE like every other setting.
+
 ---
 
 ## The screens
@@ -162,6 +205,7 @@ you move it; switching banks changes nothing.
 | ![](img/screen-menu-effects-1.png) EFFECTS: TYPES | ![](img/screen-faders-3.png) FADER BANK: LFO | ![](img/screen-menu-tuning-1.png) TUNING |
 | ![](img/screen-faders-5.png) FADER BANK: OUTPUT | ![](img/screen-menu-keys-1.png) KEYS | ![](img/screen-menu-setup-1.png) SETUP |
 | ![](img/screen-help-1.png) HELP: pads | ![](img/screen-help-3.png) HELP: menus | ![](img/screen-help-6.png) HELP: faders |
+| ![](img/screen-home-key.png) a key change | ![](img/screen-menu-setup-2.png) SETUP: KEY | ![](img/screen-menu-sound-5.png) SOUND: V4 VCO |
 
 ## Update mode
 

@@ -65,7 +65,7 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 /* scenes.c stand-ins: user presets 1 and 3 stored */
 #define NUSER 16u
 static uint16_t user_used = 5;
-static struct { uint8_t bright, console, start, user, speaker, hinted; } settings = {4, 1, 0, 0, 0, 0};
+static struct { uint8_t bright, console, start, user, speaker, hinted, lowkeys, kglide; } settings = {4, 1, 0, 0, 0, 0, 0, 0};
 static int user_save(uint32_t n) { user_used |= (uint16_t)(1u << n); return 0; }
 static int user_load_to(uint32_t n, patch_t *d) { (void)n; patch_init(d); return 0; }
 static void fm1_wdt_feed(void) {}
@@ -159,6 +159,13 @@ static void controls_md(const char *path)
     for (m = 0; m < NFBANK; m++)
         fprintf(f, "| %u | %s | %s | %s | %s | %s |\n", m + 1, FBANK[m].name, FBANK[m].f[0].name, FBANK[m].f[1].name,
                 FBANK[m].f[2].name, FBANK[m].f[3].name);
+    fprintf(f, "\nSETUP, page KEY: **LOWKEY** OFF, 12 KEYS or 24 KEYS. On, the lowest 12 (24) keys pick the key of "
+               "everything and play nothing; the keys above play as before. 12 KEYS: the nearest way (up to a tritone); "
+               "24 KEYS: the lowest octave moves down, the next one up. **GLIDE** 0.0..8.0 s (6.0): how long all glide "
+               "to the new key.\n\n"
+               "WAVE of voices 4 and 5 (SOUND, page WAVE): SAW, PULSE, TRI, SINE, SAW<>, SIN<>TRI, NOISE and the "
+               "played sounds VOICE (SHAPE and the mod wheel: the vowel), BOWED (the key's velocity: brightness) and "
+               "GLASS (SHAPE: the overtones).\n");
     fclose(f);
     printf("  controls %s\n", path);
 }
@@ -220,6 +227,15 @@ static void docs(const char *dir)                       /* every screen, for the
     run(100);
     shot(dir, "kb-selected");
     ui.kbm = ui.nsel = 0;
+    settings.lowkeys = 1;                              /* LOW KEYS: the lowest D, all glide to D */
+    fm1_in.keys = 1u << 2;
+    run(2500);
+    shot(dir, "home-key");
+    fm1_in.keys = 0;
+    run(100);
+    key_move(0, 0, 0);                                 /* (back to C at once) */
+    settings.lowkeys = 0;
+    run(1500);
     for (m = MN_SOUND; m < MN_N; m++)                  /* every page of every menu */
         for (pg = 0; MENUS[m].name && pg < MENUS[m].n; pg++) {
             const char *nm = MENUS[m].name;
@@ -297,6 +313,7 @@ int main(int argc, char **argv)
     page(dir, "s14_seq", MN_SEQ, 0);
     page(dir, "s15_tuning", MN_TUNING, 0);
     page(dir, "s16_setup", MN_SETUP, 0);
+    page(dir, "s16a_setup_key", MN_SETUP, 1);
     ui.menu = MN_PRESETS;
     ui.pre_sel = NPRESET;
     run(200);
@@ -339,6 +356,43 @@ int main(int argc, char **argv)
         bad |= ui.hint_save_t != 0u;
         if (bad) {
             fprintf(stderr, "FAIL screen: START / the HOME hint\n");
+            return 1;
+        }
+    }
+    {   /* LOW KEYS: the lowest keys pick the key and play nothing; the keys above play the VCOs as before */
+        int bad = 0, p0;
+        preset_load(1);
+        p0 = pt.v[0][VP_PITCH];
+        ui.menu = MN_HOME;
+        settings.lowkeys = 1;
+        kb.n = 0;
+        fm1_in.keys = 1u << 7;                         /* G (the lowest octave): the key of all, the nearest way */
+        run(100);
+        bad |= pt.g[G_ROOT] != 7 || kb.n != 0u || pt.v[0][VP_PITCH] != p0 - 500;
+        run(700);
+        shot(dir, "s03a_home_key");
+        fm1_in.keys |= 1u << 16;                       /* E above it: plays */
+        run(100);
+        bad |= kb.n != 1u;
+        fm1_in.keys = 0;
+        run(100);
+        settings.lowkeys = 2;                          /* 24 keys: A in the lower octave moves down, D in the upper up */
+        fm1_in.keys = 1u << 9;
+        run(100);
+        bad |= pt.g[G_ROOT] != 9 || pt.v[0][VP_PITCH] != p0 - 1500;
+        fm1_in.keys = 0;
+        run(100);
+        fm1_in.keys = 1u << (12 + 2);
+        run(100);
+        bad |= pt.g[G_ROOT] != 2 || pt.v[0][VP_PITCH] != p0 - 1000 || kb.n != 0u;
+        fm1_in.keys = 0;
+        run(100);
+        settings.lowkeys = 0;
+        preset_load(1);
+        bad |= kg.add[0] != 0;
+        page(dir, "s16b_setup_key_glide", MN_SETUP, 1);
+        if (bad) {
+            fprintf(stderr, "FAIL screen: LOW KEYS\n");
             return 1;
         }
     }

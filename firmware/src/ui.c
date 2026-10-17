@@ -5,6 +5,8 @@
  *   HOME: Ki = voice i's pitch, top pad i its gate; bottom pads KB (keyboard), P (pulser), H (hold all), C (chaos).
  *   KB: select voices, then the keys tune them (keys held together: spread over them); a key while a voice pad
  *   is held does the same.
+ *   SETUP LOW KEYS: the lowest 12 (24) keys set the key of everything, gliding (keys.c key_move); they then
+ *   play nothing, the keys above them play as before.
  *   A button opens its menu at page 1; < > turn the pages; the same button again, or PATCH, goes home. On every
  *   page knob Ki sets column i; a value with two choices (or on / off) sits on the column's top / bottom pad.
  *   KNOB BANK: PRESETS (held: HELP; there K1-K8 are filters). PATCH: HOME (held: SETUP).
@@ -21,7 +23,8 @@ enum { B_KNOBBANK, B_FADERBANK, B_LEFT, B_RIGHT, B_OCTDN, B_OCTUP, B_ARP, B_REPE
 /* ------------------------------------------------------------- the table --- */
 #define NO 0xFFu
 enum { PG_ROW, PG_GLOB, PG_VOICE };                    /* a row of one voice parameter / 8 globals / one voice */
-enum { X_LIGHT = 0xE0, X_CONSOLE, X_OUTPUT, X_LOOP, X_STEPREC, X_START };   /* (PG_GLOB: settings and pad actions) */
+enum { X_LIGHT = 0xE0, X_CONSOLE, X_OUTPUT, X_LOOP, X_STEPREC, X_START,   /* (PG_GLOB: settings and pad actions) */
+       X_LOWKEYS, X_KGLIDE };
 typedef struct {
     const char *name;
     uint8_t kind;
@@ -36,7 +39,7 @@ typedef struct {
 static const page_t PAGES[] = {
     /* SOUND (PARA) */
     {"WAVE", PG_ROW, {VP_WAVE, VP_WAVE, VC_WAVE, NO, NO, NO, NO, NO}, NO, NO,
-     "EACH VOICE'S WAVE\nNOISE: A WIND AT ITS PITCH"},
+     "EACH VOICE'S WAVE. NOISE: WIND\n4 5 ALSO VOICE, BOWED, GLASS"},
     VOICE("V1 DRONE", 0), VOICE("V2 DRONE", 1), VOICE("V3 NOISE", 2), VOICE("V4 VCO", 3),
     VOICE("V5 VCO", 4), VOICE("V6 DRONE", 5), VOICE("V7 DRONE", 6), VOICE("V8 NOISE", 7),
     /* ENVELOPE (CHORD) */
@@ -78,13 +81,15 @@ static const page_t PAGES[] = {
     /* SETUP (PATCH held): the device, not the sound */
     {"SETUP", PG_GLOB, {X_LIGHT, X_CONSOLE, X_OUTPUT, X_START, NO, NO, NO, NO}, NO, NO,
      "PAD LIGHT, USB CONSOLE, OUTPUT\nSTART: PRESETS PLAY OR SILENT"},
+    {"KEY", PG_GLOB, {X_LOWKEYS, X_KGLIDE, NO, NO, NO, NO, NO, NO}, NO, NO,
+     "LOWEST KEYS: THE KEY OF ALL\nGLIDE: HOW LONG ALL MOVE"},
     {"JOYSTICK", PG_GLOB, {G_JXOFS, G_JYOFS, NO, NO, NO, NO, NO, NO}, NO, NO,
      "THE WHEELS' CENTRE: TRIM IF\nPITCH OR MOD DRIFTS"},
 };
 /* the voice pages (a voice's page: all in its colour, its name in the header): by its type */
 static const char *const VHELP[3] = {"5 TONES, ONE CHORD. VOLT: GRIT\nTOP PAD: TONE ON  BOT: MOD",
                                      "A TONE A SQUARE SHAKES:\nMODE FM / AM, NOISE: AIR",
-                                     "THE KEYS' OSCILLATOR\nSHAPE BENDS THE WAVE"};
+                                     "THE KEYS' OSCILLATOR. SHAPE\nBENDS THE WAVE, VOICE: VOWEL"};
 typedef struct { const char *name, *button; uint8_t btn, first, n; } menu_t;
 static const menu_t MENUS[MN_N] = {
     [MN_SOUND] = {"SOUND", "PARA", B_PARA, 0, 9},
@@ -95,9 +100,9 @@ static const menu_t MENUS[MN_N] = {
     [MN_SEQ] = {"SEQUENCER", "SEQ", B_SEQ, 24, 2},
     [MN_KEYS] = {"KEYS", "ARP", B_ARP, 26, 2},
     [MN_MIX] = {"MIX", "GLOBE", B_GLOBE, 28, 3},
-    [MN_SETUP] = {"SETUP", "PATCH+", B_PATCH, 31, 2},
+    [MN_SETUP] = {"SETUP", "PATCH+", B_PATCH, 31, 3},
 };
-_Static_assert(sizeof PAGES / sizeof PAGES[0] == 33u, "MENUS: the pages");
+_Static_assert(sizeof PAGES / sizeof PAGES[0] == 34u, "MENUS: the pages");
 /* the fader banks (FADER BANK, < > or the top pads): the amounts for all voices, four each, in no menu */
 typedef struct { const char *name; uint8_t id; } fdest_t;   /* a global */
 typedef struct { const char *name; fdest_t f[4]; } fbank_t;
@@ -151,6 +156,8 @@ static struct {
     uint32_t hint_save_t;                  /* the HOME hint seen: the settings stored 1.5 s after (ms | 1), 0 = none */
     uint8_t altmask;                       /* columns whose knob edits their second parameter (DETUNE: RATE) */
     uint8_t free, hold;                    /* FREE-PLAY: the keys wake the drones (SEQ PLAY); HOLD (SEQ REC) */
+    uint8_t key_from;                      /* LOW KEYS: the key before the last one picked */
+    uint32_t key_t;                        /* (when it was picked, ms | 1; 0 = none yet) */
     int8_t fkey[NV];                       /* FREE-PLAY: the key each voice plays (-128: none) */
     uint8_t forder[NV];                    /* (the order they woke in: the oldest goes first) */
     struct { uint8_t state; uint16_t n, i; uint32_t t0, len, last; } mo;   /* the motion loop */
@@ -168,6 +175,9 @@ static void free_release_all(void);
 static void big_show(uint32_t col, const char *label, const char *val);
 static void big_note(const char *s);
 static void pitch_turn(uint32_t v, int32_t s);
+
+static uint32_t key_glide_tenths(void) { return settings.kglide ? settings.kglide - 1u > 80u ? 80u : settings.kglide - 1u : 60u; }
+static uint32_t key_glide_ticks(void) { return (key_glide_tenths() * 2756u + 10u) / 20u; }   /* (1378.1 a second) */
 
 static void ui_say(const char *a, const char *b)
 {
@@ -247,9 +257,11 @@ static const pdesc_t *it_desc(const item_t *it)
     static const char *const N_OUT[2] = {"LINE", "SPEAKER"};
     static const char *const N_LOOP[2] = {"REC", "STOP"};
     static const char *const N_START[2] = {"PLAY", "SILENT"};
-    static const pdesc_t X[6] = {{"LIGHT", 1, 8, 4, F_NUM, 0}, {"CONSOLE", 0, 1, 1, F_ONOFF, 0},
+    static const char *const N_LOWK[3] = {"OFF", "12 KEYS", "24 KEYS"};
+    static const pdesc_t X[8] = {{"LIGHT", 1, 8, 4, F_NUM, 0}, {"CONSOLE", 0, 1, 1, F_ONOFF, 0},
                                  {"OUTPUT", 0, 1, 0, F_ENUM, N_OUT}, {"LOOP", 0, 1, 0, F_ENUM, N_LOOP},
-                                 {"STEP REC", 0, 1, 0, F_ENUM, N_LOOP}, {"START", 0, 1, 0, F_ENUM, N_START}};
+                                 {"STEP REC", 0, 1, 0, F_ENUM, N_LOOP}, {"START", 0, 1, 0, F_ENUM, N_START},
+                                 {"LOWKEY", 0, 2, 0, F_ENUM, N_LOWK}, {"GLIDE", 0, 80, 60, F_NUM, 0}};
     switch (it->kind) {
     case IK_V: return &VDESC[VTYPE[it->voice]][it->id];
     case IK_G: return &GDESC[it->id];
@@ -269,6 +281,8 @@ static int32_t it_get(const item_t *it)
         case X_CONSOLE: return settings.console;
         case X_OUTPUT: return settings.speaker;
         case X_START: return settings.start;
+        case X_LOWKEYS: return settings.lowkeys;
+        case X_KGLIDE: return key_glide_tenths();
         case X_LOOP: return ui.mo.state == MO_REC || ui.mo.state == MO_LOOP ? 0 : 1;
         default: return kb.rec ? 0 : 1;
         }
@@ -300,6 +314,13 @@ static void it_text(const item_t *it, char *b, uint32_t n)
 {
     const pdesc_t *d = it_desc(it);
     int32_t v = it_get(it);
+    if (it->kind == IK_X && it->id == X_KGLIDE) {      /* tenths of a second: "6.0S" */
+        fmt_int(b, v / 10);
+        str_cat(b, ".", n);
+        fmt_int(b + str_len(b), v % 10);
+        str_cat(b, "S", n);
+        return;
+    }
     if (it->kind == IK_X && (it->id == X_LOOP || it->id == X_STEPREC)) {
         static const char *const ST[4] = {"-", "REC", "LOOP", "STOP"};
         if (it->id == X_LOOP)
@@ -383,6 +404,10 @@ static void it_set(const item_t *it, int32_t v)          /* a new value (clamped
         settings.speaker = (uint8_t)v;
     else if (it->id == X_START)
         settings.start = (uint8_t)v;
+    else if (it->id == X_LOWKEYS)
+        settings.lowkeys = (uint8_t)v;
+    else if (it->id == X_KGLIDE)
+        settings.kglide = (uint8_t)(v + 1);              /* (stored + 1: 0 = never set, the default) */
     ui.dirty = 1;
 }
 
@@ -390,11 +415,11 @@ static void it_turn(const item_t *it, uint32_t e, int32_t s)
 {
     const pdesc_t *d = it_desc(it);
     int32_t v = it_get(it);
-    if (it->kind == IK_V && d->fmt == F_TUNE && pt.g[G_SNAP]) {   /* to the next note of the tuning set */
-        int32_t lo = GEN_LO[it->id - CL_TUNE1] * 100, c = lo + v, k;
+    if (it->kind == IK_V && d->fmt == F_TUNE && pt.g[G_SNAP]) {   /* to the next note of the tuning set, as it */
+        int32_t vp = pt.v[it->voice][VP_PITCH], lo = GEN_LO[it->id - CL_TUNE1] * 100, c = lo + v + vp, k;   /* sounds */
         for (k = 0; k < (s > 0 ? s : -s); k++)
             c = tun_next((uint32_t)pt.g[G_TSET], (uint32_t)pt.g[G_ROOT], c, s > 0 ? 1 : -1);
-        it_set(it, c - lo);
+        it_set(it, c - vp - lo);
     } else
         it_set(it, v + accel(e, s, d->max - d->min));
 }
@@ -473,6 +498,7 @@ static int preset_load(uint32_t n)                      /* 0..95 the presets, 96
         return -1;
     } else
         settings.user = (uint8_t)(n - NPRESET + 1u);
+    key_clear();                                        /* (its own key, no glide left over) */
     faders_sync();                                      /* (what the faders hold stays theirs) */
     ui.preset = (uint8_t)n;
     pulser_inc = 0;
@@ -670,10 +696,10 @@ static void chaos_roll(void)
         if (!((ui.cz.mask >> v) & 1u))
             continue;
         if (VTYPE[v] == VT_CLASSIC)
-            for (g = 0; g < 5u; g++) {
+            for (g = 0; g < 5u; g++) {                  /* (in the scale as it sounds: with its VOICE PITCH) */
                 int32_t lo = GEN_LO[g] * 100, span = (GEN_HI[g] - GEN_LO[g]) * 100;
-                int32_t c = tun_next(set, root, lo + (int32_t)(xorshift(&seed) % (uint32_t)span) - 1, 1);
-                p[CL_TUNE1 + g] = vp_clamp(v, CL_TUNE1 + g, c - lo);
+                int32_t c = tun_next(set, root, lo + p[VP_PITCH] + (int32_t)(xorshift(&seed) % (uint32_t)span) - 1, 1);
+                p[CL_TUNE1 + g] = vp_clamp(v, CL_TUNE1 + g, c - p[VP_PITCH] - lo);
             }
         else if (VTYPE[v] == VT_NOISE) {
             p[NZ_PITCH] = (int16_t)(20 + xorshift(&seed) % 100u);
@@ -1345,6 +1371,16 @@ static void key_event(int32_t key, uint32_t down, uint32_t vel, uint32_t side)
     else
         kb_release(key);
 }
+/* LOW KEYS: key k of the lowest 12 (24) picks the key of everything: its note is the new root. 12: the
+ * nearest way (up to a tritone); 24: the lower octave moves down to it, the upper one up */
+static void key_pick(uint32_t k)
+{
+    int32_t dir = settings.lowkeys == 2u ? (k < 12u ? -1 : 1) : 0;
+    ui.key_from = (uint8_t)pt.g[G_ROOT];
+    key_move(k % 12u, dir, key_glide_ticks());
+    ui.key_t = fm1_ms | 1u;
+    ui_say("KEY ", NOTE_NAMES[k % 12u]);
+}
 static void keys_poll(void)
 {
     uint64_t now = fm1_in.keys, ch = now ^ ui.keys;
@@ -1353,8 +1389,16 @@ static void keys_poll(void)
     if (fm1_in.frames < 100u)                           /* (the first readings settle) */
         return;
     for (k = 0; ch && k < 37u; k++)
-        if ((ch >> k) & 1u)
+        if ((ch >> k) & 1u) {
+            if (k < 12u * settings.lowkeys) {           /* (the key picker's keys play nothing) */
+                if ((now >> k) & 1u)
+                    key_pick(k);
+                else                                    /* (a note it played before LOW KEYS: let go) */
+                    key_event((int32_t)k + 12 * ui.oct, 0, 0, k >= 18u);
+                continue;
+            }
             key_event((int32_t)k + 12 * ui.oct, (now >> k) & 1u, fm1_in.key_vel[k], k >= 18u);
+        }
 }
 
 /* USB MIDI in: notes as the keys */
